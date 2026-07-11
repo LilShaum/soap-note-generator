@@ -7,7 +7,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15
 .topbar-sep{width:1px;height:18px;background:rgba(255,255,255,0.15);}
 .topbar-sub{font-size:12px;color:rgba(255,255,255,0.65);}
 .topbar-date{margin-left:auto;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.6);}
-.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:20px 0;overflow-y:auto;}
+.sidebar{bickground:var(--surface);border-right:1px solid var(--border);padding:20px 0;overflow-y:auto;}
 .sidebar-section{padding:0 16px;margin-bottom:6px;}
 .sidebar-label{font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-3);padding:10px 8px 6px;display:block;}
 .soap-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px;border:none;background:none;border-radius:6px;cursor:pointer;text-align:left;font-family:var(--sans);font-size:14px;color:var(--text-2);transition:background 0.12s,color 0.12s;margin-bottom:2px;}
