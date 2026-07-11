@@ -145,15 +145,15 @@ chestpain(){
   const hx=picks([['cp-htn','hypertension'],['cp-cardiac','known cardiac history'],['cp-smoker','smoker'],['cp-dm','diabetes'],['cp-trauma','recent trauma or cough']]);
   const abnExam=picks([['cp-acute-distress','Acute distress'],['cp-murmur','Cardiac murmur'],['cp-lungs-abn','Respiratory abnormality (wheeze / crackles)'],['cp-abd-tender','Abdominal tenderness'],['cp-cw-tender','Chest wall tenderness']]);
   const plan=picks([['cp-ecg-ord','Order ECG and troponin to rule out cardiac etiology'],['cp-troponin','Troponin ordered'],['cp-reassure','Reassure and observe; advise to avoid exertion until ruled out'],['cp-no-exert','Avoid exertion until cardiac cause excluded'],['cp-nsaid','If cardiac cause excluded: NSAID for pain, rest, and stress reduction'],['cp-er-warn','Educate on warning signs: worsening pain, radiation, diaphoresis, or syncope — go to ER'],['cp-cardio','Cardiology referral placed'],['cp-stress','Stress test ordered']]);
-  const vits=[v('cp-bp')?'BP: '+v('cp-bp'):'',v('cp-hr')?'HR: '+v('cp-hr')+' bpm':'',v('cp-rr')?'RR: '+v('cp-rr'):'',v('cp-temp')?'Temp: '+v('cp-temp')+'°C':'',v('cp-spo2')?'SpO2: '+v('cp-spo2')+'%':''].filter(Boolean).join(', ');
+  const vits=[v('cp-bp')?'BP: '+v('cp-bp'):'',v('cp-hr')?'HR: '+v('cp-hr')+' bpm':'',v('cp-rr')?'RR: '+v('cp-rr'):'',v('cp-temp')?'Temp: '+v('cp-temp')+'\u00b0C':'',v('cp-spo2')?'SpO2: '+v('cp-spo2')+'%':''].filter(Boolean).join(', ');
   return `S:\n${vp('cp-loc')}, ${v('cp-pain')||'?'}/10 intensity, for ${vp('cp-dur')}, ${vp('cp-onset').toLowerCase()}. ${assoc.length?'Associated symptoms: '+assoc.join(', ')+'. ':'No radiation to arm or jaw, shortness of breath, nausea, diaphoresis, palpitations, or syncope. '}Past medical history: ${hx.length?hx.join(', '):'no significant cardiac history; non-smoker'}.\n\nO:\n${vits?vits+'. ':'Vitals stable. '}${abnExam.length?'Abnormal findings: '+abnExam.join(', ')+'.':'No acute distress. CV: regular rate and rhythm, no murmurs. Chest clear.'}\nECG: ${vp('cp-ecg')}.\n\nA:\nDiagnosis: ${vp('cp-dx')}.\nDDx: stable angina, GERD, costochondritis, anxiety, ACS (rule out).\n\nP:\n${bul(plan)}\n• Follow up in ${vp('cp-fu')}.`;
 },
 
 cold(){
   const sx=picks([['cold-cough','cough'],['cold-throat','sore throat'],['cold-runny','runny nose'],['cold-fatigue','mild fatigue'],['cold-congestion','nasal congestion'],['cold-fever','fever'],['cold-sob','shortness of breath'],['cold-cp','chest pain'],['cold-myalgia','myalgia']]);
   const abnExam=picks([['cold-nasal-congest','Nasal congestion'],['cold-pharynx','Pharyngeal erythema'],['cold-exudate','Tonsillar exudate'],['cold-lymph','Lymphadenopathy'],['cold-lungs-abn','Abnormal lung sounds']]);
-  const plan=picks([['cold-reassure','Reassure; likely viral and self-limiting'],['cold-rest','Rest and fluids encouraged'],['cold-gargle','Warm saltwater gargles'],['cold-saline','Saline nasal spray'],['cold-apap','Acetaminophen or ibuprofen PRN for fever or discomfort'],['cold-no-abx','Avoid antibiotics'],['cold-swab','Throat swab / COVID test ordered'],['cold-return','Return if symptoms persist beyond 10 days, worsen, or fever >38.5°C develops']]);
-  const vits=[v('cold-bp')?'BP: '+v('cold-bp'):'',v('cold-hr')?'HR: '+v('cold-hr'):'',v('cold-temp')?'Temp: '+v('cold-temp')+'°C':'',v('cold-rr')?'RR: '+v('cold-rr'):'',v('cold-spo2')?'SpO2: '+v('cold-spo2')+'%':''].filter(Boolean).join(', ');
+  const plan=picks([['cold-reassure','Reassure; likely viral and self-limiting'],['cold-rest','Rest and fluids encouraged'],['cold-gargle','Warm saltwater gargles'],['cold-saline','Saline nasal spray'],['cold-apap','Acetaminophen or ibuprofen PRN for fever or discomfort'],['cold-no-abx','Avoid antibiotics'],['cold-swab','Throat swab / COVID test ordered'],['cold-return','Return if symptoms persist beyond 10 days, worsen, or fever >38.5\u00b0C develops']]);
+  const vits=[v('cold-bp')?'BP: '+v('cold-bp'):'',v('cold-hr')?'HR: '+v('cold-hr'):'',v('cold-temp')?'Temp: '+v('cold-temp')+'\u00b0C':'',v('cold-rr')?'RR: '+v('cold-rr'):'',v('cold-spo2')?'SpO2: '+v('cold-spo2')+'%':''].filter(Boolean).join(', ');
   const s=sx.length?sx.join(', '):'upper respiratory symptoms';
   return `S:\nPatient presents with ${s} for ${vp('cold-dur')}. Self-treatment tried: ${v('cold-self')} Past medical history: ${v('cold-pmh')}\n\nO:\n${vits?vits+'. ':'Vitals stable. '}${abnExam.length?'Exam: '+abnExam.join(', ')+'.':'Lungs clear to auscultation. No lymphadenopathy. No tonsillar exudate.'}\n\nA:\nDiagnosis: ${vp('cold-dx')}.\nDDx: influenza, allergic rhinitis, COVID-19 (less likely).\n\nP:\n${bul(plan)}`;
 },
@@ -171,7 +171,7 @@ child(){
 
 
 ocp(){
-  const contra=picks([['ocp-smoke','smoker ≥35 years'],['ocp-aura','migraines with aura'],['ocp-dvt','history of DVT/PE'],['ocp-liver','liver disease'],['ocp-htn','uncontrolled hypertension'],['ocp-pregnant','currently pregnant'],['ocp-bf','currently breastfeeding'],['ocp-cvd','cardiovascular disease']]);
+  const contra=picks([['ocp-smoke','smoker \u226535 years'],['ocp-aura','migraines with aura'],['ocp-dvt','history of DVT/PE'],['ocp-liver','liver disease'],['ocp-htn','uncontrolled hypertension'],['ocp-pregnant','currently pregnant'],['ocp-bf','currently breastfeeding'],['ocp-cvd','cardiovascular disease']]);
   const counsel=picks([['ocp-options','Discussed options: combined vs. progestin-only pills, benefits, and risks'],['ocp-howto','Explained correct use, missed pill instructions, and potential side effects'],['ocp-missed','Missed pill instructions reviewed'],['ocp-se','Potential side effects discussed (e.g. nausea, breast tenderness, spotting)'],['ocp-sti','Advised on STI prevention — OCP does not protect against infections; recommend condom use'],['ocp-bp-check','Check BP regularly while on OCP'],['ocp-interact','Drug interaction counselling provided'],['ocp-fertility','Return to fertility discussed']]);
   const rx=v('ocp-rx');
   const bp=v('ocp-bp');const bmi=v('ocp-bmi');
@@ -254,7 +254,7 @@ G.uti=function(){
   const abx=v('uti-abx');const abxdose=v('uti-abxdose');const allergies=v('uti-allergies');
   const isMale=v('uti-sex').toLowerCase().startsWith('male');
   const pregnancyLine=isMale?'':v('uti-pregnant');
-  const vits=[v('uti-temp')?'Temp: '+v('uti-temp')+'°C':'',v('uti-bp')?'BP: '+v('uti-bp'):'',v('uti-hr')?'HR: '+v('uti-hr')+' bpm':''].filter(Boolean).join(', ');
+  const vits=[v('uti-temp')?'Temp: '+v('uti-temp')+'\u00b0C':'',v('uti-bp')?'BP: '+v('uti-bp'):'',v('uti-hr')?'HR: '+v('uti-hr')+' bpm':''].filter(Boolean).join(', ');
   return `S:\n${vp('uti-sex')} patient presents with ${usx.length?usx.join(', '):'urinary symptoms'} for ${vp('uti-duration')}.${upsx.length?' Upper UTI / systemic symptoms: '+upsx.join(', ')+'.':' No fever, flank pain, nausea, or systemic symptoms.'} ${v('uti-recurrent')}${pregnancyLine?' '+pregnancyLine:''}${allergies?' Allergies: '+allergies+'.':' No known allergies.'}\n\nO:\n${vits||'Vitals stable.'}${abnExam.length?' Exam: '+abnExam.join(', ')+'.':' Abdomen: suprapubic area non-tender. No CVA tenderness.'}\nUrinalysis: ${vp('uti-ua')}.\n\nA:\n• ${vp('uti-dx')}.\n\nP:\n${abx?'• '+abx+(abxdose?' '+abxdose:'')+' prescribed.\n':''}${bul(plan)}\n• Follow up: ${vp('uti-fu')}.`;
 };
 
@@ -460,7 +460,7 @@ chestpain() {
 cold() {
   const sx=picks([['cold-cough','cough'],['cold-throat','sore throat'],['cold-runny','runny nose'],['cold-fatigue','fatigue'],['cold-congestion','congestion'],['cold-fever','fever'],['cold-sob','SOB'],['cold-myalgia','myalgia']]);
   const abnExam=picks([['cold-nasal-congest','Nasal congestion'],['cold-pharynx','Pharyngeal erythema'],['cold-exudate','Tonsillar exudate'],['cold-lymph','Lymphadenopathy'],['cold-lungs-abn','Lungs abnormal']]);
-  const plan=picks([['cold-reassure','Reassured — viral'],['cold-rest','Rest + fluids'],['cold-gargle','Saltwater gargles'],['cold-saline','Saline nasal spray'],['cold-apap','Acetaminophen/ibuprofen PRN'],['cold-no-abx','No antibiotics'],['cold-swab','Swab ordered'],['cold-return','Return if >10d, worse, or fever >38.5°C']]);
+  const plan=picks([['cold-reassure','Reassured — viral'],['cold-rest','Rest + fluids'],['cold-gargle','Saltwater gargles'],['cold-saline','Saline nasal spray'],['cold-apap','Acetaminophen/ibuprofen PRN'],['cold-no-abx','No antibiotics'],['cold-swab','Swab ordered'],['cold-return','Return if >10d, worse, or fever >38.5\u00b0C']]);
   const oVits=vits([[v('cold-temp'),'T'],[v('cold-spo2'),'SpO2'],[v('cold-hr'),'HR']]);
   return `S: ${sx.length?sx.join(', '):'Upper respiratory sx'} for ${vp('cold-dur')}. ${v('cold-self')}\n\nO: ${oVits||'Vitals stable'}.${abnExam.length?' '+abnExam.join(', ')+'.':' Lungs clear, no lymphadenopathy, no exudate.'}\n\nA: ${vp('cold-dx')}.\n\nP:\n${bul(plan)}`;
 },
@@ -487,7 +487,7 @@ child() {
 },
 
 ocp() {
-  const contra=picks([['ocp-smoke','smoker ≥35y'],['ocp-aura','migraine with aura'],['ocp-dvt','DVT/PE hx'],['ocp-liver','liver disease'],['ocp-htn','uncontrolled HTN'],['ocp-pregnant','pregnant'],['ocp-bf','breastfeeding'],['ocp-cvd','CVD']]);
+  const contra=picks([['ocp-smoke','smoker \u226535y'],['ocp-aura','migraine with aura'],['ocp-dvt','DVT/PE hx'],['ocp-liver','liver disease'],['ocp-htn','uncontrolled HTN'],['ocp-pregnant','pregnant'],['ocp-bf','breastfeeding'],['ocp-cvd','CVD']]);
   const counsel=picks([['ocp-options','Options discussed'],['ocp-howto','Use and timing explained'],['ocp-missed','Missed pill instructions'],['ocp-se','Side effects reviewed'],['ocp-sti','STI prevention — condoms advised'],['ocp-bp-check','BP monitoring while on OCP'],['ocp-interact','Drug interactions reviewed'],['ocp-fertility','Return to fertility discussed']]);
   const rx=v('ocp-rx');const oVits=vits([[v('ocp-bp'),'BP'],[v('ocp-bmi'),'BMI']]);
   return `S: OCP counselling.${contra.length?' Contraindications: '+contra.join(', ')+'.':''}\n\nO: ${oVits||'Vitals stable'}.\n\nA: ${vp('ocp-suit')}.\n\nP:\n${rx?'• '+rx+'.\n':''}${bul(counsel)}\n• F/u ${vp('ocp-fu')}.`;
