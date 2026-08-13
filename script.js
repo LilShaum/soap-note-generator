@@ -54,6 +54,86 @@ function chk(id){const el=document.getElementById(id);return el?el.checked:false
 function picks(pairs){return pairs.filter(([id])=>chk(id)).map(([,lbl])=>lbl);}
 function bul(arr){return arr.map(s=>'• '+s+(s.endsWith('.')?'':'.')).join('\n');}
 
+// ── REFILL WORDING VARIANTS ─────────────────────────────────
+// Several clinically-equivalent phrasings for the medication-refill notes, so
+// repeated notes don't read as identical / "cloned". pick() chooses one at
+// random each time a note is generated (re-generating the same note re-rolls
+// the wording). The FIRST entry in every list is the original wording.
+//
+// SAFETY RULE: every entry within a list must document the SAME clinical
+// content — vary only the wording, never the meaning, and never the set of
+// symptoms/negatives being recorded.
+function pick(a){ return a[Math.floor(Math.random() * a.length)]; }
+
+const RV = {
+  full: {
+    dm: {
+      open: [
+        'Patient presents for Type 2 Diabetes Mellitus (T2DM) medication refill.',
+        'Seen today for routine refill of Type 2 Diabetes Mellitus (T2DM) medication.',
+        'Attends for follow-up of Type 2 Diabetes Mellitus (T2DM), requesting medication refill.'
+      ],
+      neg: [
+        'No recent episodes of hypoglycemia or hyperglycemia. Denies polyuria, polydipsia, or fatigue. No medication side effects. ',
+        'Denies hypoglycemic or hyperglycemic episodes. No polyuria, polydipsia, or fatigue reported. Tolerating medication without side effects. ',
+        'No symptoms of hypo- or hyperglycemia. Reports no polyuria, polydipsia, or fatigue, and no medication side effects. '
+      ]
+    },
+    htn: {
+      open: [
+        'Patient presents for routine hypertension medication refill.',
+        'Seen today for routine refill of antihypertensive medication.',
+        'Attends for follow-up of hypertension and medication refill.'
+      ],
+      neg: [
+        'Denies chest pain, shortness of breath, headache, dizziness, or medication side effects. No recent ER or urgent care visits. ',
+        'No chest pain, shortness of breath, headache, dizziness, or medication side effects reported. No recent emergency or urgent care visits. ',
+        'Reports no chest pain, shortness of breath, headache, dizziness, or medication side effects. No emergency room or urgent care visits since last seen. '
+      ]
+    },
+    thy: {
+      open: [
+        'Patient presents for hypothyroidism medication refill.',
+        'Seen today for routine refill of thyroid hormone replacement.',
+        'Attends for follow-up of hypothyroidism and medication refill.'
+      ],
+      negHypo: [
+        'No hypothyroid symptoms reported. ',
+        'Denies hypothyroid symptoms. ',
+        'No symptoms of hypothyroidism reported. '
+      ],
+      negHyper: [
+        'No symptoms of over-replacement. ',
+        'No features suggestive of over-replacement. ',
+        'Denies symptoms of over-replacement. '
+      ]
+    },
+    gerd: {
+      open: [
+        'Patient presents for GERD medication refill.',
+        'Seen today for routine refill of GERD medication.',
+        'Attends for follow-up of GERD and medication refill.'
+      ],
+      negSx: [
+        'No significant GERD symptoms reported. ',
+        'Denies significant reflux symptoms. ',
+        'No significant heartburn or reflux symptoms reported. '
+      ],
+      negAlarm: [
+        'No alarm symptoms identified.',
+        'No alarm features identified.',
+        'Denies alarm symptoms.'
+      ]
+    }
+  },
+  compact: {
+    dm:   { open: ['S: F/u T2DM.', 'S: T2DM med refill.', 'S: Routine T2DM refill.'] },
+    htn:  { open: ['S: F/u HTN.', 'S: HTN med refill.', 'S: Routine HTN refill.'] },
+    thy:  { open: ['S: F/u hypothyroidism.', 'S: Hypothyroidism med refill.', 'S: Routine hypothyroidism refill.'] },
+    gerd: { open: ['S: F/u GERD.', 'S: GERD med refill.', 'S: Routine GERD refill.'] }
+  }
+};
+
 function clearForm(type){
   if(!confirm('Clear all fields for this note? This cannot be undone.'))return;
   const p=document.getElementById('panel-'+type);
@@ -96,7 +176,7 @@ t2dm(){
   const plan=picks([['dm-refill','Refill '+med],['dm-continue','Continue current diabetes management'],['dm-diet','Encourage diet/exercise adherence'],['dm-labs','A1C and labs ordered if due'],['dm-footcheck','Foot exam completed / referred'],['dm-bp-plan','BP management reviewed']]);
   const a1c=v('dm-a1c');const a1cd=v('dm-a1cdate');
   const vits=[v('dm-bp')?'BP: '+v('dm-bp'):'',v('dm-hr')?'HR: '+v('dm-hr')+' bpm':'',v('dm-wt')?'Weight: '+v('dm-wt')+' lbs':''].filter(Boolean).join(', ');
-  return `S:\nPatient presents for Type 2 Diabetes Mellitus (T2DM) medication refill. Reports ${vp('dm-adherence')} with ${med}. ${sx.length?'Symptoms reported: '+sx.join(', ')+'. ':'No recent episodes of hypoglycemia or hyperglycemia. Denies polyuria, polydipsia, or fatigue. No medication side effects. '}\n\nO:\nLast A1C: ${a1c?a1c+'%':'[pending]'}${a1cd?' ('+a1cd+')':''}. ${vits?vits+'.':''} ${v('dm-exam')}\n\nA:\n• T2DM — ${vp('dm-status')}. ${v('dm-hypoglycemia')} ${v('dm-tol')}\n\nP:\n${bul(plan)}\n• Follow up in ${vp('dm-fu')}.`;
+  return `S:\n${pick(RV.full.dm.open)} Reports ${vp('dm-adherence')} with ${med}. ${sx.length?'Symptoms reported: '+sx.join(', ')+'. ':pick(RV.full.dm.neg)}\n\nO:\nLast A1C: ${a1c?a1c+'%':'[pending]'}${a1cd?' ('+a1cd+')':''}. ${vits?vits+'.':''} ${v('dm-exam')}\n\nA:\n• T2DM — ${vp('dm-status')}. ${v('dm-hypoglycemia')} ${v('dm-tol')}\n\nP:\n${bul(plan)}\n• Follow up in ${vp('dm-fu')}.`;
 },
 
 htn(){
@@ -108,7 +188,7 @@ htn(){
   const homebp=v('htn-homebp');
   const bp=v('htn-bp');const hr=v('htn-hr');
   const oVits=[bp?'BP: '+bp:'',hr?'HR: '+hr+' bpm':''].filter(Boolean).join(', ');
-  return `S:\nPatient presents for routine hypertension medication refill. ${sx.length?'Reports: '+sx.join(', ')+'. ':'Denies chest pain, shortness of breath, headache, dizziness, or medication side effects. No recent ER or urgent care visits. '}Reports ${vp('htn-adherence')}.${homebp?' Home BP average ~'+homebp+'.':''}\n\nO:\n${oVits?oVits+'. ':'Vitals stable. '}${abnExam.length?'Abnormal findings: '+abnExam.join(', ')+'.':'Gen: NAD. CV: regular rate and rhythm, no murmur. Lungs: clear. No edema.'}\n\nA:\nHypertension — ${vp('htn-control')}. ${v('htn-concerns')}\n\nP:\n${bul(plan)}\n• Follow up in ${vp('htn-fu')}.`;
+  return `S:\n${pick(RV.full.htn.open)} ${sx.length?'Reports: '+sx.join(', ')+'. ':pick(RV.full.htn.neg)}Reports ${vp('htn-adherence')}.${homebp?' Home BP average ~'+homebp+'.':''}\n\nO:\n${oVits?oVits+'. ':'Vitals stable. '}${abnExam.length?'Abnormal findings: '+abnExam.join(', ')+'.':'Gen: NAD. CV: regular rate and rhythm, no murmur. Lungs: clear. No edema.'}\n\nA:\nHypertension — ${vp('htn-control')}. ${v('htn-concerns')}\n\nP:\n${bul(plan)}\n• Follow up in ${vp('htn-fu')}.`;
 },
 
 inr(){
@@ -234,7 +314,7 @@ G.thyroid=function(){
   const plan=picks([['thy-refill','Refill '+med],['thy-timing','Reinforce correct timing: empty stomach 30–60 min before food'],['thy-labs','Repeat TSH in 6–8 weeks after any dose change'],['thy-labs-annual','Annual TSH and free T4 if stable'],['thy-interactions','Medication interactions reviewed (calcium, iron, antacids)'],['thy-endo','Endocrinology referral placed']]);
   const nd=v('thy-newdose');const mc=v('thy-medchanges');
   const vits=[v('thy-hr')?'HR: '+v('thy-hr')+' bpm':'',v('thy-wt')?'Weight: '+v('thy-wt')+' lbs':''].filter(Boolean).join(', ');
-  return `S:\nPatient presents for hypothyroidism medication refill. ${vp('thy-adherence')} with ${med}.${mc?' Recent medication/supplement changes: '+mc+'.':' No recent medication or supplement changes.'} ${hyposx.length?'Hypothyroid symptoms: '+hyposx.join(', ')+'. ':'No hypothyroid symptoms reported. '}${hypersx.length?'Signs of possible over-replacement: '+hypersx.join(', ')+'. ':'No symptoms of over-replacement. '}\n\nO:\nTSH: ${v('thy-tsh')||'[pending]'}${v('thy-tshdate')?' ('+v('thy-tshdate')+')':''}. ${v('thy-t4')?'Free T4: '+v('thy-t4')+'. ':''}${vits?vits+'. ':''} ${v('thy-exam')}\n\nA:\n• Hypothyroidism — ${vp('thy-status')}.\n• ${vp('thy-tol')}.\n\nP:\n• ${vp('thy-action')}${nd?'. New dose: '+nd:''}.\n${bul(plan)}\n• Follow up in ${vp('thy-fu')}.`;
+  return `S:\n${pick(RV.full.thy.open)} ${vp('thy-adherence')} with ${med}.${mc?' Recent medication/supplement changes: '+mc+'.':' No recent medication or supplement changes.'} ${hyposx.length?'Hypothyroid symptoms: '+hyposx.join(', ')+'. ':pick(RV.full.thy.negHypo)}${hypersx.length?'Signs of possible over-replacement: '+hypersx.join(', ')+'. ':pick(RV.full.thy.negHyper)}\n\nO:\nTSH: ${v('thy-tsh')||'[pending]'}${v('thy-tshdate')?' ('+v('thy-tshdate')+')':''}. ${v('thy-t4')?'Free T4: '+v('thy-t4')+'. ':''}${vits?vits+'. ':''} ${v('thy-exam')}\n\nA:\n• Hypothyroidism — ${vp('thy-status')}.\n• ${vp('thy-tol')}.\n\nP:\n• ${vp('thy-action')}${nd?'. New dose: '+nd:''}.\n${bul(plan)}\n• Follow up in ${vp('thy-fu')}.`;
 };
 
 G.gerd=function(){
@@ -243,7 +323,7 @@ G.gerd=function(){
   const rf=picks([['gerd-weightloss','unexplained weight loss'],['gerd-vomiting','persistent vomiting'],['gerd-bleeding','GI bleeding/melena'],['gerd-anaemia','anaemia'],['gerd-mass','palpable abdominal mass']]);
   const plan=picks([['gerd-refill','Refill '+med],['gerd-lifestyle','Lifestyle advice: elevate head of bed, avoid triggers, small meals'],['gerd-antacid','Antacid for breakthrough symptoms as needed'],['gerd-scope','Upper GI endoscopy referral placed'],['gerd-gastro','Gastroenterology referral placed'],['gerd-alarmwarn','Patient advised to return if alarm symptoms develop']]);
   const vits=[v('gerd-bp')?'BP: '+v('gerd-bp'):'',v('gerd-wt')?'Weight: '+v('gerd-wt')+' lbs':''].filter(Boolean).join(', ');
-  return `S:\nPatient presents for GERD medication refill. ${vp('gerd-adherence')} with ${med}. ${sx.length?'Ongoing symptoms: '+sx.join(', ')+'. ':'No significant GERD symptoms reported. '}${v('gerd-control')} ${v('gerd-triggers')} ${rf.length?'Alarm symptoms present: '+rf.join(', ')+' — further investigation warranted.':'No alarm symptoms identified.'}\n\nO:\n${vits?vits+'. ':''} ${v('gerd-exam')}\n\nA:\n• GERD — ${vp('gerd-status')}.\n• ${vp('gerd-redflag')}.\n\nP:\n• ${vp('gerd-action')}.\n${bul(plan)}\n• Follow up in ${vp('gerd-fu')}.`;
+  return `S:\n${pick(RV.full.gerd.open)} ${vp('gerd-adherence')} with ${med}. ${sx.length?'Ongoing symptoms: '+sx.join(', ')+'. ':pick(RV.full.gerd.negSx)}${v('gerd-control')} ${v('gerd-triggers')} ${rf.length?'Alarm symptoms present: '+rf.join(', ')+' — further investigation warranted.':pick(RV.full.gerd.negAlarm)}\n\nO:\n${vits?vits+'. ':''} ${v('gerd-exam')}\n\nA:\n• GERD — ${vp('gerd-status')}.\n• ${vp('gerd-redflag')}.\n\nP:\n• ${vp('gerd-action')}.\n${bul(plan)}\n• Follow up in ${vp('gerd-fu')}.`;
 };
 
 G.uti=function(){
@@ -385,7 +465,7 @@ t2dm() {
   const a1c=v('dm-a1c');const a1cd=v('dm-a1cdate');
   const oVits=vits([[v('dm-bp'),'BP'],[v('dm-hr'),'HR'],[v('dm-wt'),'wt']]);
   const examVal=v('dm-exam');const examLine=examVal.toLowerCase().startsWith('no acute')?'':'Exam: '+examVal;
-  return `S: F/u T2DM. ${med}, ${vp('dm-adherence')}.${sx.length?' Sx: '+sx.join(', ')+'.':''}\n\nO: A1C ${a1c?a1c+'%':'[pending]'}${a1cd?' ('+a1cd+')':''}${oVits?', '+oVits:''}.${examLine?' '+examLine:''}\n\nA: T2DM — ${vp('dm-status')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('dm-fu')}.`;
+  return `${pick(RV.compact.dm.open)} ${med}, ${vp('dm-adherence')}.${sx.length?' Sx: '+sx.join(', ')+'.':''}\n\nO: A1C ${a1c?a1c+'%':'[pending]'}${a1cd?' ('+a1cd+')':''}${oVits?', '+oVits:''}.${examLine?' '+examLine:''}\n\nA: T2DM — ${vp('dm-status')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('dm-fu')}.`;
 },
 
 htn() {
@@ -395,7 +475,7 @@ htn() {
   const abnExam=picks([['htn-acute-distress','Acute distress'],['htn-murmur','Murmur'],['htn-lungs-abn','Lungs abnormal'],['htn-edema','Edema']]);
   const plan=picks([['htn-refill','Refill '+meds],['htn-lifestyle','Lifestyle modifications'],['htn-homebp-plan','Home BP monitoring'],['htn-cmp','Electrolytes/creatinine if due'],['htn-echo','Echo / cardiology referral'],['htn-sodium','Low-sodium diet']]);
   const homebp=v('htn-homebp');const oVits=vits([[v('htn-bp'),'BP'],[v('htn-hr'),'HR']]);
-  return `S: F/u HTN. ${meds}.${sx.length?' Reports: '+sx.join(', ')+'.':''} ${vp('htn-adherence')}.${homebp?' Home BP ~'+homebp+'.':''}\n\nO: ${oVits||'Vitals stable'}.${abnExam.length?' '+abnExam.join(', ')+'.':''}\n\nA: HTN — ${vp('htn-control')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('htn-fu')}.`;
+  return `${pick(RV.compact.htn.open)} ${meds}.${sx.length?' Reports: '+sx.join(', ')+'.':''} ${vp('htn-adherence')}.${homebp?' Home BP ~'+homebp+'.':''}\n\nO: ${oVits||'Vitals stable'}.${abnExam.length?' '+abnExam.join(', ')+'.':''}\n\nA: HTN — ${vp('htn-control')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('htn-fu')}.`;
 },
 
 thyroid() {
@@ -404,7 +484,7 @@ thyroid() {
   const hypersx=picks([['thy-palp','palpitations'],['thy-sweating','heat intolerance'],['thy-tremor','tremor'],['thy-weightloss','weight loss'],['thy-insomnia','insomnia'],['thy-anxious','anxiety']]);
   const plan=picks([['thy-refill','Refill '+med],['thy-timing','Correct timing reinforced'],['thy-labs','TSH in 6–8 wks (dose change)'],['thy-labs-annual','Annual TSH/T4'],['thy-interactions','Drug interactions reviewed'],['thy-endo','Endocrinology referral']]);
   const nd=v('thy-newdose');const oVits=vits([[v('thy-hr'),'HR'],[v('thy-wt'),'wt']]);
-  return `S: F/u hypothyroidism. ${med}, ${vp('thy-adherence')}.${hyposx.length?' Hypothyroid sx: '+hyposx.join(', ')+'.':''}${hypersx.length?' Over-replacement sx: '+hypersx.join(', ')+'.':''}\n\nO: TSH ${v('thy-tsh')||'[pending]'}${v('thy-tshdate')?' ('+v('thy-tshdate')+')':''}${v('thy-t4')?', T4 '+v('thy-t4'):''}${oVits?', '+oVits:''}. ${v('thy-exam')}\n\nA: Hypothyroidism — ${vp('thy-status')}.\n\nP:\n• ${vp('thy-action')}${nd?' — '+nd:''}.\n${bul(plan)}\n• F/u ${vp('thy-fu')}.`;
+  return `${pick(RV.compact.thy.open)} ${med}, ${vp('thy-adherence')}.${hyposx.length?' Hypothyroid sx: '+hyposx.join(', ')+'.':''}${hypersx.length?' Over-replacement sx: '+hypersx.join(', ')+'.':''}\n\nO: TSH ${v('thy-tsh')||'[pending]'}${v('thy-tshdate')?' ('+v('thy-tshdate')+')':''}${v('thy-t4')?', T4 '+v('thy-t4'):''}${oVits?', '+oVits:''}. ${v('thy-exam')}\n\nA: Hypothyroidism — ${vp('thy-status')}.\n\nP:\n• ${vp('thy-action')}${nd?' — '+nd:''}.\n${bul(plan)}\n• F/u ${vp('thy-fu')}.`;
 },
 
 gerd() {
@@ -413,7 +493,7 @@ gerd() {
   const rf=picks([['gerd-weightloss','weight loss'],['gerd-vomiting','persistent vomiting'],['gerd-bleeding','GI bleeding'],['gerd-anaemia','anaemia'],['gerd-mass','abdominal mass']]);
   const plan=picks([['gerd-refill','Refill '+med],['gerd-lifestyle','Lifestyle: elevate head of bed, avoid triggers'],['gerd-antacid','Antacid PRN'],['gerd-scope','GI endoscopy referral'],['gerd-gastro','Gastroenterology referral'],['gerd-alarmwarn','Return if alarm sx']]);
   const oVits=vits([[v('gerd-bp'),'BP'],[v('gerd-wt'),'wt']]);
-  return `S: F/u GERD. ${med}, ${vp('gerd-adherence')}.${sx.length?' Sx: '+sx.join(', ')+'.':''}${rf.length?' Alarm sx: '+rf.join(', ')+' — investigation warranted.':''}\n\nO: ${oVits||'Vitals stable'}. ${v('gerd-exam')}\n\nA: GERD — ${vp('gerd-status')}.\n\nP:\n• ${vp('gerd-action')}.\n${bul(plan)}\n• F/u ${vp('gerd-fu')}.`;
+  return `${pick(RV.compact.gerd.open)} ${med}, ${vp('gerd-adherence')}.${sx.length?' Sx: '+sx.join(', ')+'.':''}${rf.length?' Alarm sx: '+rf.join(', ')+' — investigation warranted.':''}\n\nO: ${oVits||'Vitals stable'}. ${v('gerd-exam')}\n\nA: GERD — ${vp('gerd-status')}.\n\nP:\n• ${vp('gerd-action')}.\n${bul(plan)}\n• F/u ${vp('gerd-fu')}.`;
 },
 
 inr() {
@@ -578,3 +658,5 @@ function generate(type) {
     alert('Sorry — this note could not be generated.\nPlease report this error: ' + err.message);
   }
 }
+
+// build-marker: refill-wording-variants v1 (2026-08-12)
