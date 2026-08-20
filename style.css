@@ -1,13 +1,13 @@
 :root{--bg:#F4F3F0;--surface:#FAFAF8;--border:#DDDBD6;--border-light:#E8E6E1;--text:#1C1B18;--text-2:#5C5A54;--text-3:#75736B;--accent:#1A3A2A;--accent-light:#E8F0EB;--accent-mid:#2D5C42;--danger:#8C2F26;--danger-bg:#FBEBE9;--danger-border:#D9A6A0;--mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15px;line-height:1.6;min-height:100vh;}
-.shell{display:grid;grid-template-columns:260px 1fr;grid-template-rows:52px 1fr;min-height:100vh;}
+.shell{display:grid;grid-template-columns:260px 1fr;grid-template-rows:52px 1fr;height:100vh;min-height:100vh;}
 .topbar{grid-column:1/-1;background:var(--accent);display:flex;align-items:center;padding:0 24px;gap:12px;border-bottom:1px solid rgba(255,255,255,0.08);}
 .topbar-logo{font-family:var(--mono);font-size:13px;font-weight:500;color:rgba(255,255,255,0.9);letter-spacing:0.06em;text-transform:uppercase;}
 .topbar-sep{width:1px;height:18px;background:rgba(255,255,255,0.15);}
 .topbar-sub{font-size:12px;color:rgba(255,255,255,0.65);}
 .topbar-date{margin-left:auto;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.6);}
-.sidebar{bickground:var(--surface);border-right:1px solid var(--border);padding:20px 0;overflow-y:auto;}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:20px 0;overflow-y:auto;}
 .sidebar-section{padding:0 16px;margin-bottom:6px;}
 .sidebar-label{font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-3);padding:10px 8px 6px;display:block;}
 .soap-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px;border:none;background:none;border-radius:6px;cursor:pointer;text-align:left;font-family:var(--sans);font-size:14px;color:var(--text-2);transition:background 0.12s,color 0.12s;margin-bottom:2px;}
@@ -101,3 +101,51 @@ button:focus-visible,.soap-btn:focus-visible,.check-item input[type="checkbox"]:
   .field-label{min-width:100%;padding-top:0;}
   .help-panel{width:100%;max-width:100vw;}
 }
+
+/* ══ MULTI-REASON VISIT UI ═══════════════════════════════════════════ */
+
+/* Sidebar: search + instruction */
+.sidebar-top{padding:0 16px 10px;}
+.type-search{font-family:var(--sans);font-size:14px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);}
+.type-search:focus{border-color:var(--accent-mid);background:#fff;outline:none;}
+.sidebar-hint{font-size:12px;line-height:1.45;color:var(--text-3);margin-top:8px;}
+.no-results{font-size:13px;color:var(--text-3);padding:6px 24px;}
+
+/* Sidebar entries read as tick boxes now, because several can be on at once */
+.soap-btn .dot{width:16px;height:16px;border-radius:4px;background:#fff;border:1.5px solid var(--border);position:relative;transition:background 0.12s,border-color 0.12s;}
+.soap-btn:hover .dot{border-color:var(--text-3);}
+.soap-btn.active .dot{background:var(--accent-mid);border-color:var(--accent-mid);}
+.soap-btn.active .dot::after{content:'';position:absolute;left:4.5px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);}
+
+/* "This visit" chip bar, pinned to the top of the working area */
+.visit-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:12;background:var(--bg);padding:28px 0 12px;margin:-28px 0 8px;border-bottom:1px solid var(--border-light);}
+.visit-head-label{font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-3);padding-top:7px;flex-shrink:0;}
+.chips{display:flex;flex-wrap:wrap;gap:6px;flex:1;}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-light);color:var(--accent);border:1px solid #CBDDD2;border-radius:999px;padding:4px 6px 4px 12px;font-size:13px;font-weight:500;}
+.chip-x{border:none;background:none;color:var(--accent-mid);font-size:11px;line-height:1;cursor:pointer;padding:3px 4px;border-radius:50%;}
+.chip-x:hover{background:rgba(26,58,42,0.12);color:var(--danger);}
+
+/* Remove control inside each form heading */
+.note-title::after{order:1;}
+.panel-remove{order:2;flex-shrink:0;border:1px solid var(--border);background:var(--surface);color:var(--text-3);font-family:var(--sans);font-size:11px;font-weight:500;letter-spacing:0.06em;text-transform:uppercase;border-radius:4px;padding:3px 9px;cursor:pointer;transition:background 0.12s,border-color 0.12s,color 0.12s;}
+.panel-remove:hover{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger);}
+
+/* One action bar and one note for the whole visit */
+.visit-bar{display:flex;gap:10px;position:sticky;bottom:0;background:var(--bg);padding:10px 0 4px;z-index:10;border-top:1px solid var(--border-light);margin-top:16px;}
+#visit-out{margin-bottom:8px;}
+
+/* Help panel: desktop install */
+.help-section-title{font-size:13px;font-weight:600;color:var(--accent);margin-bottom:8px;}
+.help-note{font-size:13px;line-height:1.6;color:var(--text-2);margin-bottom:12px;}
+.help-note strong{color:var(--text);}
+.install-btn{display:block;width:100%;padding:11px;margin-bottom:12px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-family:var(--sans);font-size:14px;font-weight:500;cursor:pointer;}
+.install-btn:hover{background:var(--accent-mid);}
+
+@media (max-width:800px){
+  .visit-head{padding-top:16px;margin-top:-16px;}
+  .visit-head-label{padding-top:0;}
+}
+
+/* Chip label doubles as a jump-to-this-form control */
+.chip-go{border:none;background:none;font-family:var(--sans);font-size:13px;font-weight:500;color:var(--accent);cursor:pointer;padding:0;line-height:1.4;}
+.chip-go:hover{text-decoration:underline;}

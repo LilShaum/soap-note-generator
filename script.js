@@ -6,37 +6,6 @@ function toggleHelp(){
   document.getElementById('help-overlay').classList.toggle('open');
 }
 
-// ── NOTE PANEL SWITCHING ─────────────────────────────────────
-function show(type, btn) {
-  document.querySelectorAll('.form-panel').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.soap-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('empty-state').style.display='none';
-  document.getElementById('panel-'+type).classList.add('active');
-  btn.classList.add('active');
-  document.getElementById('main-area').scrollTop=0;
-  // Remember last used note type
-  try{localStorage.setItem('soap-last-type', type);}catch(e){}
-}
-
-// Restore last used note on load
-window.addEventListener('DOMContentLoaded', ()=>{
-  try{
-    const last = localStorage.getItem('soap-last-type');
-    if(last){
-      // Robust match: find the sidebar button whose onclick references this type,
-      // regardless of exact attribute formatting.
-      const btn = [...document.querySelectorAll('.soap-btn')]
-        .find(b=>(b.getAttribute('onclick')||'').includes("'"+last+"'"));
-      const panel = document.getElementById('panel-'+last);
-      if(btn && panel){
-        document.getElementById('empty-state').style.display='none';
-        panel.classList.add('active');
-        btn.classList.add('active');
-      }
-    }
-  }catch(e){}
-});
-
 // ── VALUE HELPERS ────────────────────────────────────────────
 // v(id): trimmed value. Placeholder options (e.g. "— select —") count as empty,
 // so unanswered dropdowns are never documented as findings.
@@ -63,6 +32,13 @@ function bul(arr){return arr.map(s=>'• '+s+(s.endsWith('.')?'':'.')).join('\n'
 // SAFETY RULE: every entry within a list must document the SAME clinical
 // content — vary only the wording, never the meaning, and never the set of
 // symptoms/negatives being recorded.
+// pain(id, suffix): the score clause, or nothing at all when the field is
+// blank — a note should never read "?/10".
+function pain(id, suffix){
+  const val = v(id);
+  if (!val) return '';
+  return ', ' + val + '/10' + (suffix ? ' ' + suffix : '');
+}
 function pick(a){ return a[Math.floor(Math.random() * a.length)]; }
 
 const RV = {
@@ -108,6 +84,23 @@ const RV = {
         'Denies symptoms of over-replacement. '
       ]
     },
+    refill: {
+      open: [
+        'Patient presents for medication refill',
+        'Seen today for routine medication refill',
+        'Attends for medication refill'
+      ],
+      med: [
+        'Current medication{s}:',
+        'Currently taking',
+        'On'
+      ],
+      adh: [
+        'Reports {a}, with {i}.',
+        'Describes {a}. Reports {i}.',
+        'Patient reports {a} and {i}.'
+      ]
+    },
     gerd: {
       open: [
         'Patient presents for GERD medication refill.',
@@ -130,43 +123,58 @@ const RV = {
     dm:   { open: ['S: F/u T2DM.', 'S: T2DM med refill.', 'S: Routine T2DM refill.'] },
     htn:  { open: ['S: F/u HTN.', 'S: HTN med refill.', 'S: Routine HTN refill.'] },
     thy:  { open: ['S: F/u hypothyroidism.', 'S: Hypothyroidism med refill.', 'S: Routine hypothyroidism refill.'] },
-    gerd: { open: ['S: F/u GERD.', 'S: GERD med refill.', 'S: Routine GERD refill.'] }
+    gerd: { open: ['S: F/u GERD.', 'S: GERD med refill.', 'S: Routine GERD refill.'] },
+    refill: { open: ['S: Med refill', 'S: Routine med refill', 'S: Refill visit'] }
   }
 };
 
-function clearForm(type){
-  if(!confirm('Clear all fields for this note? This cannot be undone.'))return;
-  const p=document.getElementById('panel-'+type);
-  p.querySelectorAll('input[type="text"],input[type="number"],textarea').forEach(el=>el.value='');
-  p.querySelectorAll('select').forEach(el=>el.selectedIndex=0);
-  p.querySelectorAll('input[type="checkbox"]').forEach(el=>el.checked=el.defaultChecked);
-  document.getElementById('out-'+type).style.display='none';
-}
-
-function copyNote(type,btn){
-  const text=document.getElementById('text-'+type).textContent;
-  const done=()=>{btn.textContent='Copied!';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied');},3000);};
-  if(navigator.clipboard){navigator.clipboard.writeText(text).then(done).catch(()=>fallback(text,done));}
-  else{fallback(text,done);}
-}
-function fallback(text,done){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}
-
-function showOut(type,text){
-  document.getElementById('text-'+type).textContent=text;
-  const out=document.getElementById('out-'+type);
-  out.style.display='block';
-  setTimeout(()=>out.scrollIntoView({behavior:'smooth',block:'nearest'}),50);
-}
-
 const G={
 
+/* General medication refill — works for any drug or condition, and is the
+   fallback whenever none of the condition-specific refill forms fit. */
+refill(){
+  const cond=v('rx-condition');
+  const meds=medList('rx');
+  const medsOr=meds||'current medication';
+  const nMeds=[1,2,3].filter(i=>v('rx-drug'+i)).length;
+  const sx=v('rx-sx'), seDetail=v('rx-se-detail'), labs=v('rx-labs');
+  const examDetail=v('rx-exam-detail'), notes=v('rx-notes');
+  const supply=v('rx-supply'), other=v('rx-p-other');
+  const oVits=[v('rx-bp')?'BP: '+v('rx-bp'):'',v('rx-hr')?'HR: '+v('rx-hr')+' bpm':'',v('rx-wt')?'Weight: '+v('rx-wt')+' lbs':''].filter(Boolean).join(', ');
+  const plan=picks([
+    ['rx-p-refill','Refill '+medsOr+(supply?' — '+supply+' supply':'')],
+    ['rx-p-continue','Continue current dose'],
+    ['rx-p-adjust','Dose adjusted as above'],
+    ['rx-p-labs','Bloodwork / monitoring ordered'],
+    ['rx-p-lifestyle','Lifestyle measures reinforced'],
+    ['rx-p-counsel','Counselled on side effects and when to seek medical attention'],
+    ['rx-p-adherence','Medication adherence discussed'],
+    ['rx-p-referral','Referral placed']
+  ]);
+  if(other)plan.push(cap(other));
+  const fu=vp('rx-fu');
+  const fuLine=/^as needed/i.test(fu)?'• Follow up as needed.':'• Follow up in '+fu+'.';
+  return `S:
+${pick(RV.full.refill.open)}${cond?' for '+cond:''}. ${meds?pick(RV.full.refill.med).replace('{s}', nMeds>1?'s':'')+' '+meds+'. ':''}${pick(RV.full.refill.adh).replace('{a}', vp('rx-adherence')).replace('{i}', vp('rx-interval'))}${sx?' '+cap(ensureDot(sx)):''} ${v('rx-se')}${seDetail?' '+cap(ensureDot(seDetail)):''}
+
+O:
+${oVits?oVits+'. ':''}${labs?cap(ensureDot(labs))+' ':''}${v('rx-exam')}${examDetail?' '+cap(ensureDot(examDetail)):''}
+
+A:
+• ${cond?cap(cond):'Chronic medication therapy'} — ${vp('rx-status')}. ${v('rx-tol')}${notes?' '+cap(ensureDot(notes)):''}
+
+P:
+${bul(plan)}
+${fuLine}`;
+},
+
 depression(){
-  const drug=v('dep-drug')||'current antidepressant';
+  const namedDrug=v('dep-drug');const drug=namedDrug||'current antidepressant';
   const med=v('dep-dose')?drug+' '+v('dep-dose'):drug;
   const sx=picks([['dep-fatigue','fatigue'],['dep-motivation','low motivation'],['dep-anhedonia','anhedonia'],['dep-concentration','poor concentration']]);
   const abnAppear=picks([['dep-agitated','Agitated / psychomotor agitation'],['dep-dishevelled','Dishevelled / poor self-care'],['dep-uncooperative','Uncooperative'],['dep-abnormal-speech','Abnormal rate or tone of speech'],['dep-disorganised','Disorganised / illogical thought']]);
   const plan=picks([['dep-monitor','Monitor for side effects and mood changes'],['dep-sleep-hyg','Encourage sleep hygiene and routine'],['dep-activity','Physical activity encouraged'],['dep-crisis','Crisis contact information provided'],['dep-referral','Referral to mental health / counselling placed'],['dep-therapy','CBT / therapy discussed']]);
-  return `S:\nPatient presents for follow-up of depression. Mood reported as ${vp('dep-mood')} since initiating ${med}. ${v('dep-si')} ${sx.length?'Ongoing symptoms include: '+sx.join(', ')+'. ':'No significant ongoing symptoms reported. '}Sleep is ${vp('dep-sleep')}. Appetite is ${vp('dep-appetite')}. ${v('dep-se')}\n\nO:\nMood: ${vp('dep-omood')}. Affect: ${vp('dep-affect')}.${abnAppear.length?' Abnormal behaviour / appearance: '+abnAppear.join(', ')+'.':' Cooperative, appropriate appearance, normal speech, logical thought process.'} ${v('dep-psych')}\n\nA:\n• Major Depressive Disorder — ${vp('dep-status')}.\n• Safety: ${v('dep-safety')}\n\nP:\n• ${vp('dep-rx')} (${med}).\n${bul(plan)}\n• Follow up in ${vp('dep-fu')}.`;
+  return `S:\nPatient presents for follow-up of depression. Mood reported as ${vp('dep-mood')} since initiating ${med}. ${v('dep-si')} ${sx.length?'Ongoing symptoms include: '+sx.join(', ')+'. ':'No significant ongoing symptoms reported. '}${vp('dep-sleep')===vp('dep-appetite')?'Sleep and appetite '+vp('dep-sleep')+'.':'Sleep is '+vp('dep-sleep')+'. Appetite is '+vp('dep-appetite')+'.'} ${v('dep-se')}\n\nO:\nMood: ${vp('dep-omood')}. Affect: ${vp('dep-affect')}.${abnAppear.length?' Abnormal behaviour / appearance: '+abnAppear.join(', ')+'.':' Cooperative, appropriate appearance, normal speech, logical thought process.'} ${v('dep-psych')}\n\nA:\n• Major Depressive Disorder — ${vp('dep-status')}.\n• Safety: ${v('dep-safety')}\n\nP:\n• ${vp('dep-rx')}${namedDrug?' ('+med+')':''}.\n${bul(plan)}\n• Follow up in ${vp('dep-fu')}.`;
 },
 
 t2dm(){
@@ -176,7 +184,7 @@ t2dm(){
   const plan=picks([['dm-refill','Refill '+med],['dm-continue','Continue current diabetes management'],['dm-diet','Encourage diet/exercise adherence'],['dm-labs','A1C and labs ordered if due'],['dm-footcheck','Foot exam completed / referred'],['dm-bp-plan','BP management reviewed']]);
   const a1c=v('dm-a1c');const a1cd=v('dm-a1cdate');
   const vits=[v('dm-bp')?'BP: '+v('dm-bp'):'',v('dm-hr')?'HR: '+v('dm-hr')+' bpm':'',v('dm-wt')?'Weight: '+v('dm-wt')+' lbs':''].filter(Boolean).join(', ');
-  return `S:\n${pick(RV.full.dm.open)} Reports ${vp('dm-adherence')} with ${med}. ${sx.length?'Symptoms reported: '+sx.join(', ')+'. ':pick(RV.full.dm.neg)}\n\nO:\nLast A1C: ${a1c?a1c+'%':'[pending]'}${a1cd?' ('+a1cd+')':''}. ${vits?vits+'.':''} ${v('dm-exam')}\n\nA:\n• T2DM — ${vp('dm-status')}. ${v('dm-hypoglycemia')} ${v('dm-tol')}\n\nP:\n${bul(plan)}\n• Follow up in ${vp('dm-fu')}.`;
+  return `S:\n${pick(RV.full.dm.open)} Reports ${vp('dm-adherence')} with ${med}. ${sx.length?'Symptoms reported: '+sx.join(', ')+'. ':pick(RV.full.dm.neg)}\n\nO:\nLast A1C: ${a1c?a1c+'%':'pending'}${a1cd?' ('+a1cd+')':''}. ${vits?vits+'.':''} ${v('dm-exam')}\n\nA:\n• T2DM — ${vp('dm-status')}. ${v('dm-hypoglycemia')} ${v('dm-tol')}\n\nP:\n${bul(plan)}\n• Follow up in ${vp('dm-fu')}.`;
 },
 
 htn(){
@@ -210,23 +218,23 @@ backpain(){
   const onsetStr=onset.startsWith('gradual')?'Gradual onset, no clear trigger.':'Onset '+onset+'.';
   const plan=picks([['bp-reassure','Reassure and educate'],['bp-activity','Continue gentle activity; avoid prolonged rest'],['bp-ibu','Ibuprofen 400 mg PO q6–8h PRN with food'],['bp-heat','Apply heat to affected area'],['bp-stretch','Stretching exercises recommended'],['bp-physio','Physiotherapy referral placed'],['bp-imaging','Imaging ordered (X-ray / MRI)'],['bp-neuro-warn','Advised to return immediately if new neurological symptoms develop']]);
   const examOut=[...posExam,...(abnExam.length?['Abnormal: '+abnExam.join(', ')]:['Normal strength, sensation, and reflexes in lower limbs','Negative straight leg raise'])];
-  return `S:\nLow back pain for ${vp('bp-duration')}. ${onsetStr} ${vp('bp-char')}, ${v('bp-pain-rest')||'?'}/10 at rest, ${v('bp-pain-move')||'?'}/10 with movement. ${rf.length?'Red flag symptoms present: '+rf.join(', ')+' — further evaluation warranted.':'No radiation, numbness, weakness, or bowel/bladder changes.'} Improved with ${vp('bp-relief')}. ${v('bp-hx')}\n\nO:\n${examOut.join('. ')}.\n\nA:\nDiagnosis: ${vp('bp-dx')}.${rf.length?' Red flags present — serious pathology to be excluded.':''}\nDDx: disc herniation, spinal stenosis${rf.length?', serious spinal pathology (to be excluded).':', vertebral fracture (less likely).'}\n\nP:\n${bul(plan)}\n• Follow up in ${vp('bp-fu')}.`;
+  return `S:\nLow back pain for ${vp('bp-duration')}. ${onsetStr} ${vp('bp-char')}${pain('bp-pain-rest','at rest')}${pain('bp-pain-move','with movement')}. ${rf.length?'Red flag symptoms present: '+rf.join(', ')+' — further evaluation warranted.':'No radiation, numbness, weakness, or bowel/bladder changes.'} Improved with ${vp('bp-relief')}. ${v('bp-hx')}\n\nO:\n${examOut.join('. ')}.\n\nA:\n${vp('bp-dx')}.${rf.length?' Red flags present — serious pathology to be excluded.':''}\nDDx: disc herniation, spinal stenosis${rf.length?', serious spinal pathology (to be excluded).':', vertebral fracture (less likely).'}\n\nP:\n${bul(plan)}\n• Follow up in ${vp('bp-fu')}.`;
 },
 
 headache(){
   const assoc=picks([['ha-nausea','nausea'],['ha-vomit','vomiting'],['ha-visual','visual changes'],['ha-photo','photophobia'],['ha-phono','phonophobia'],['ha-weakness','weakness/neurological changes']]);
   const abnExam=picks([['ha-neuro-deficit','Focal neurological deficit'],['ha-cn-deficit','Cranial nerve deficit'],['ha-papilloedema','Papilloedema on fundoscopy'],['ha-neck-stiff','Neck stiffness / meningismus'],['ha-sinus-tender','Sinus / temporal artery tenderness'],['ha-disoriented','Disoriented / altered consciousness']]);
   const plan=picks([['ha-reassure','Reassure patient; discuss stress management and adequate sleep'],['ha-sleep','Adequate sleep advised'],['ha-apap','Acetaminophen 500 mg PO q6h PRN'],['ha-ibu','Ibuprofen 400 mg PO q6–8h PRN'],['ha-hydration','Encourage hydration and regular meals'],['ha-caffeine','Avoid excessive caffeine and screen time'],['ha-triptan','Triptan prescribed'],['ha-neuro','Neurology referral placed']]);
-  return `S:\nHeadache for ${vp('ha-dur')} with ${vp('ha-onset')}. Located ${vp('ha-loc')}, ${vp('ha-char')}, ${v('ha-pain')||'?'}/10 in intensity. ${assoc.length?'Associated symptoms: '+assoc.join(', ')+'. ':'No nausea, vomiting, visual changes, weakness, photophobia, or phonophobia. '}Worsened by ${vp('ha-aggr')}; relieved by ${vp('ha-relief')}. ${v('ha-hx')}\n\nO:\n${chk('ha-disoriented')?'':'Alert and oriented. '}Vitals stable.${abnExam.length?' Abnormal findings: '+abnExam.join(', ')+'.':' No focal neurological deficits. Cranial nerves intact. Neck supple.'}\n\nA:\nDiagnosis: ${vp('ha-dx')}.\nDDx: migraine, sinus headache, secondary causes (e.g. hypertension, infection — less likely).\n\nP:\n${bul(plan)}\n• Follow up ${vp('ha-fu')}.`;
+  return `S:\nHeadache for ${vp('ha-dur')} with ${vp('ha-onset')}. Located ${vp('ha-loc')}, ${vp('ha-char')}${pain('ha-pain','in intensity')}. ${assoc.length?'Associated symptoms: '+assoc.join(', ')+'. ':'No nausea, vomiting, visual changes, weakness, photophobia, or phonophobia. '}Worsened by ${vp('ha-aggr')}; relieved by ${vp('ha-relief')}. ${v('ha-hx')}\n\nO:\n${chk('ha-disoriented')?'':'Alert and oriented. '}Vitals stable.${abnExam.length?' Abnormal findings: '+abnExam.join(', ')+'.':' No focal neurological deficits. Cranial nerves intact. Neck supple.'}\n\nA:\n${vp('ha-dx')}.\nDDx: migraine, sinus headache, secondary causes (e.g. hypertension, infection — less likely).\n\nP:\n${bul(plan)}\n• Follow up ${vp('ha-fu')}.`;
 },
 
 chestpain(){
   const assoc=picks([['cp-radiation','radiation to arm or jaw'],['cp-sob','shortness of breath'],['cp-nausea','nausea'],['cp-diaphoresis','diaphoresis'],['cp-palp','palpitations'],['cp-syncope','syncope/pre-syncope']]);
   const hx=picks([['cp-htn','hypertension'],['cp-cardiac','known cardiac history'],['cp-smoker','smoker'],['cp-dm','diabetes'],['cp-trauma','recent trauma or cough']]);
   const abnExam=picks([['cp-acute-distress','Acute distress'],['cp-murmur','Cardiac murmur'],['cp-lungs-abn','Respiratory abnormality (wheeze / crackles)'],['cp-abd-tender','Abdominal tenderness'],['cp-cw-tender','Chest wall tenderness']]);
-  const plan=picks([['cp-ecg-ord','Order ECG and troponin to rule out cardiac etiology'],['cp-troponin','Troponin ordered'],['cp-reassure','Reassure and observe; advise to avoid exertion until ruled out'],['cp-no-exert','Avoid exertion until cardiac cause excluded'],['cp-nsaid','If cardiac cause excluded: NSAID for pain, rest, and stress reduction'],['cp-er-warn','Educate on warning signs: worsening pain, radiation, diaphoresis, or syncope — go to ER'],['cp-cardio','Cardiology referral placed'],['cp-stress','Stress test ordered']]);
+  const plan=picks([['cp-ecg-ord','ECG ordered and reviewed'],['cp-troponin','Troponin ordered'],['cp-reassure','Reassure and observe'],['cp-no-exert','Avoid exertion until cardiac cause excluded'],['cp-nsaid','If cardiac cause excluded: NSAID for pain, rest, and stress reduction'],['cp-er-warn','Educate on warning signs: worsening pain, radiation, diaphoresis, or syncope — go to ER'],['cp-cardio','Cardiology referral placed'],['cp-stress','Stress test ordered']]);
   const vits=[v('cp-bp')?'BP: '+v('cp-bp'):'',v('cp-hr')?'HR: '+v('cp-hr')+' bpm':'',v('cp-rr')?'RR: '+v('cp-rr'):'',v('cp-temp')?'Temp: '+v('cp-temp')+'\u00b0C':'',v('cp-spo2')?'SpO2: '+v('cp-spo2')+'%':''].filter(Boolean).join(', ');
-  return `S:\n${vp('cp-loc')}, ${v('cp-pain')||'?'}/10 intensity, for ${vp('cp-dur')}, ${vp('cp-onset').toLowerCase()}. ${assoc.length?'Associated symptoms: '+assoc.join(', ')+'. ':'No radiation to arm or jaw, shortness of breath, nausea, diaphoresis, palpitations, or syncope. '}Past medical history: ${hx.length?hx.join(', '):'no significant cardiac history; non-smoker'}.\n\nO:\n${vits?vits+'. ':'Vitals stable. '}${abnExam.length?'Abnormal findings: '+abnExam.join(', ')+'.':'No acute distress. CV: regular rate and rhythm, no murmurs. Chest clear.'}\nECG: ${vp('cp-ecg')}.\n\nA:\nDiagnosis: ${vp('cp-dx')}.\nDDx: stable angina, GERD, costochondritis, anxiety, ACS (rule out).\n\nP:\n${bul(plan)}\n• Follow up in ${vp('cp-fu')}.`;
+  return `S:\n${vp('cp-loc')}${pain('cp-pain','intensity')}, for ${vp('cp-dur')}, ${vp('cp-onset').toLowerCase()}. ${assoc.length?'Associated symptoms: '+assoc.join(', ')+'. ':'No radiation to arm or jaw, shortness of breath, nausea, diaphoresis, palpitations, or syncope. '}${cap(hx.length?hx.join(', '):'no significant cardiac history; non-smoker')}.\n\nO:\n${vits?vits+'. ':'Vitals stable. '}${abnExam.length?'Abnormal findings: '+abnExam.join(', ')+'.':'No acute distress. CV: regular rate and rhythm, no murmurs. Chest clear.'}\nECG: ${vp('cp-ecg')}.\n\nA:\n${vp('cp-dx')}.\nDDx: stable angina, GERD, costochondritis, anxiety, ACS (rule out).\n\nP:\n${bul(plan)}\n• Follow up in ${vp('cp-fu')}.`;
 },
 
 cold(){
@@ -235,7 +243,7 @@ cold(){
   const plan=picks([['cold-reassure','Reassure; likely viral and self-limiting'],['cold-rest','Rest and fluids encouraged'],['cold-gargle','Warm saltwater gargles'],['cold-saline','Saline nasal spray'],['cold-apap','Acetaminophen or ibuprofen PRN for fever or discomfort'],['cold-no-abx','Avoid antibiotics'],['cold-swab','Throat swab / COVID test ordered'],['cold-return','Return if symptoms persist beyond 10 days, worsen, or fever >38.5\u00b0C develops']]);
   const vits=[v('cold-bp')?'BP: '+v('cold-bp'):'',v('cold-hr')?'HR: '+v('cold-hr'):'',v('cold-temp')?'Temp: '+v('cold-temp')+'\u00b0C':'',v('cold-rr')?'RR: '+v('cold-rr'):'',v('cold-spo2')?'SpO2: '+v('cold-spo2')+'%':''].filter(Boolean).join(', ');
   const s=sx.length?sx.join(', '):'upper respiratory symptoms';
-  return `S:\nPatient presents with ${s} for ${vp('cold-dur')}. Self-treatment tried: ${v('cold-self')} Past medical history: ${v('cold-pmh')}\n\nO:\n${vits?vits+'. ':'Vitals stable. '}${abnExam.length?'Exam: '+abnExam.join(', ')+'.':'Lungs clear to auscultation. No lymphadenopathy. No tonsillar exudate.'}\n\nA:\nDiagnosis: ${vp('cold-dx')}.\nDDx: influenza, allergic rhinitis, COVID-19 (less likely).\n\nP:\n${bul(plan)}`;
+  return `S:\nPatient presents with ${s} for ${vp('cold-dur')}. ${cap(v('cold-self'))} ${cap(v('cold-pmh'))}\n\nO:\n${vits?vits+'. ':'Vitals stable. '}${abnExam.length?'Exam: '+abnExam.join(', ')+'.':'Lungs clear to auscultation. No lymphadenopathy. No tonsillar exudate.'}\n\nA:\n${vp('cold-dx')}.\nDDx: influenza, allergic rhinitis, COVID-19 (less likely).\n\nP:\n${bul(plan)}`;
 },
 
 child(){
@@ -246,18 +254,18 @@ child(){
   const wt=v('ch-wt');const wtpct=v('ch-wt-pct');const ht=v('ch-ht');const htpct=v('ch-ht-pct');
   const growthLine=[wt?'Weight: '+wt+' lbs'+(wtpct?' ('+wtpct+' %ile)':''):'',ht?'Height: '+ht+(htpct?' ('+htpct+' %ile)':''):''].filter(Boolean).join(', ');
   const immDeclined=v('ch-imm').toLowerCase().includes('declin');
-  return `S:\n${age?'Child ('+age+')':'Child'} brought in by parent for ${vp('ch-type')}. ${v('ch-concerns')} ${st.length?'Child is '+st.join(', ')+'. ':''}${v('ch-illness')} ${v('ch-imm')}\n\nO:\n${growthLine?growthLine+'. ':''}${abnSys.length?'Abnormal findings: '+abnSys.join('. ')+'.':'Physical exam unremarkable. All systems within normal limits.'}\n\nA:\nAssessment: ${vp('ch-dx')}.\n\nP:\n${bul(plan)}${immDeclined?'':'\n• Immunizations reviewed and updated as needed.'}\n• Follow up ${vp('ch-fu')}.`;
+  return `S:\n${age?'Child ('+age+')':'Child'} brought in by parent for ${vp('ch-type')}. ${v('ch-concerns')} ${st.length?'Child is '+st.join(', ')+'. ':''}${v('ch-illness')} ${v('ch-imm')}\n\nO:\n${growthLine?growthLine+'. ':''}${abnSys.length?'Abnormal findings: '+abnSys.join('. ')+'.':'Physical exam unremarkable. All systems within normal limits.'}\n\nA:\n${vp('ch-dx')}.\n\nP:\n${bul(plan)}${immDeclined?'':'\n• Immunizations reviewed and updated as needed.'}\n• Follow up ${vp('ch-fu')}.`;
 },
 
 
 ocp(){
   const contra=picks([['ocp-smoke','smoker \u226535 years'],['ocp-aura','migraines with aura'],['ocp-dvt','history of DVT/PE'],['ocp-liver','liver disease'],['ocp-htn','uncontrolled hypertension'],['ocp-pregnant','currently pregnant'],['ocp-bf','currently breastfeeding'],['ocp-cvd','cardiovascular disease']]);
-  const counsel=picks([['ocp-options','Discussed options: combined vs. progestin-only pills, benefits, and risks'],['ocp-howto','Explained correct use, missed pill instructions, and potential side effects'],['ocp-missed','Missed pill instructions reviewed'],['ocp-se','Potential side effects discussed (e.g. nausea, breast tenderness, spotting)'],['ocp-sti','Advised on STI prevention — OCP does not protect against infections; recommend condom use'],['ocp-bp-check','Check BP regularly while on OCP'],['ocp-interact','Drug interaction counselling provided'],['ocp-fertility','Return to fertility discussed']]);
+  const counsel=picks([['ocp-options','Discussed options: combined vs. progestin-only pills, benefits, and risks'],['ocp-howto','Explained correct use and timing, including what to do if a pill is late'],['ocp-missed','Missed pill instructions reviewed'],['ocp-se','Potential side effects discussed (e.g. nausea, breast tenderness, spotting)'],['ocp-sti','Advised on STI prevention — OCP does not protect against infections; recommend condom use'],['ocp-bp-check','Check BP regularly while on OCP'],['ocp-interact','Drug interaction counselling provided'],['ocp-fertility','Return to fertility discussed']]);
   const rx=v('ocp-rx');
   const bp=v('ocp-bp');const bmi=v('ocp-bmi');
   const oVits=[bp?'BP: '+bp:'',bmi?'BMI: '+bmi:''].filter(Boolean).join('. ');
   const pregnancyLine=(chk('ocp-pregnant')||chk('ocp-bf'))?'':'Patient is not currently pregnant or breastfeeding.';
-  return `S:\nPatient presents requesting information and advice about oral contraceptive pills. ${contra.length?'Contraindications identified on screening: '+contra.join(', ')+'. ':'No history of smoking, migraines with aura, thromboembolic disease, or liver problems. '}Patient reports ${vp('ocp-periods').toLowerCase()}. Medications / allergies: ${v('ocp-meds')}${pregnancyLine?' '+pregnancyLine:''}\n\nO:\n${oVits?oVits+'. ':''}Exam: ${v('ocp-exam')}\n\nA:\n• ${vp('ocp-suit')}.\n\nP:\n${rx?'• '+rx+'.\n':''}${bul(counsel)}\n• Follow up in ${vp('ocp-fu')}.`;
+  return `S:\nPatient presents requesting information and advice about oral contraceptive pills. ${contra.length?'Contraindications identified on screening: '+contra.join(', ')+'. ':'No history of smoking, migraines with aura, thromboembolic disease, or liver problems. '}Patient reports ${vp('ocp-periods').toLowerCase()}. ${cap(v('ocp-meds'))}${pregnancyLine?' '+pregnancyLine:''}\n\nO:\n${oVits?oVits+'. ':''}${cap(v('ocp-exam'))}\n\nA:\n• ${vp('ocp-suit')}.\n\nP:\n${rx?'• '+rx+'.\n':''}${bul(counsel)}\n• Follow up in ${vp('ocp-fu')}.`;
 },
 
 labs(){
@@ -281,7 +289,7 @@ medrx(){
   const meds=v('mr-meds');
   const vits=[v('mr-bp')?'BP: '+v('mr-bp'):'',v('mr-hr')?'HR: '+v('mr-hr')+' bpm':'',v('mr-wt')?'Weight: '+v('mr-wt')+' lbs':'',v('mr-egfr')?'eGFR: '+v('mr-egfr'):''].filter(Boolean).join(', ');
   const allergies=v('mr-allergies');
-  return `S:\n${v('mr-reason')} Patient on ${vp('mr-count')} regular medications. ${v('mr-adherence')}${concerns.length?' Patient-reported concerns: '+concerns.join(', ')+'.':''}${allergies?' Known allergies: '+allergies+'.':''}\n\nCurrent medications:\n${meds||'[see medication list in chart]'}\n\nO:\n${vits||'Vitals as per chart.'}\n${findings.length?'Review findings:\n'+bul(findings):'• No medication safety concerns identified on review.'}\n\nA:\n• ${vp('mr-safety')}.\n• Polypharmacy: ${vp('mr-poly')}.\n\nP:\n${bul(actions)}\n• Follow up: ${vp('mr-fu')}.`;
+  return `S:\n${v('mr-reason')} Patient on ${vp('mr-count')} regular medications. ${v('mr-adherence')}${concerns.length?' Patient-reported concerns: '+concerns.join(', ')+'.':''}${allergies?' Known allergies: '+allergies+'.':''}\n\nCurrent medications:\n${meds||'[see medication list in chart]'}\n\nO:\n${vits?vits+'.':'Vitals as per chart.'}\n${findings.length?'Review findings:\n'+bul(findings):'• No medication safety concerns identified on review.'}\n\nA:\n• ${vp('mr-safety')}.\n• Polypharmacy: ${vp('mr-poly')}.\n\nP:\n${bul(actions)}\n• Follow up: ${vp('mr-fu')}.`;
 }
 
 };
@@ -314,7 +322,7 @@ G.thyroid=function(){
   const plan=picks([['thy-refill','Refill '+med],['thy-timing','Reinforce correct timing: empty stomach 30–60 min before food'],['thy-labs','Repeat TSH in 6–8 weeks after any dose change'],['thy-labs-annual','Annual TSH and free T4 if stable'],['thy-interactions','Medication interactions reviewed (calcium, iron, antacids)'],['thy-endo','Endocrinology referral placed']]);
   const nd=v('thy-newdose');const mc=v('thy-medchanges');
   const vits=[v('thy-hr')?'HR: '+v('thy-hr')+' bpm':'',v('thy-wt')?'Weight: '+v('thy-wt')+' lbs':''].filter(Boolean).join(', ');
-  return `S:\n${pick(RV.full.thy.open)} ${vp('thy-adherence')} with ${med}.${mc?' Recent medication/supplement changes: '+mc+'.':' No recent medication or supplement changes.'} ${hyposx.length?'Hypothyroid symptoms: '+hyposx.join(', ')+'. ':pick(RV.full.thy.negHypo)}${hypersx.length?'Signs of possible over-replacement: '+hypersx.join(', ')+'. ':pick(RV.full.thy.negHyper)}\n\nO:\nTSH: ${v('thy-tsh')||'[pending]'}${v('thy-tshdate')?' ('+v('thy-tshdate')+')':''}. ${v('thy-t4')?'Free T4: '+v('thy-t4')+'. ':''}${vits?vits+'. ':''} ${v('thy-exam')}\n\nA:\n• Hypothyroidism — ${vp('thy-status')}.\n• ${vp('thy-tol')}.\n\nP:\n• ${vp('thy-action')}${nd?'. New dose: '+nd:''}.\n${bul(plan)}\n• Follow up in ${vp('thy-fu')}.`;
+  return `S:\n${pick(RV.full.thy.open)} ${vp('thy-adherence')} with ${med}.${mc?' Recent medication/supplement changes: '+mc+'.':' No recent medication or supplement changes.'} ${hyposx.length?'Hypothyroid symptoms: '+hyposx.join(', ')+'. ':pick(RV.full.thy.negHypo)}${hypersx.length?'Signs of possible over-replacement: '+hypersx.join(', ')+'. ':pick(RV.full.thy.negHyper)}\n\nO:\nTSH: ${v('thy-tsh')||'pending'}${v('thy-tshdate')?' ('+v('thy-tshdate')+')':''}. ${v('thy-t4')?'Free T4: '+v('thy-t4')+'. ':''}${vits?vits+'. ':''} ${v('thy-exam')}\n\nA:\n• ${vp('thy-status')}.\n• ${vp('thy-tol')}.\n\nP:\n• ${vp('thy-action')}${nd?'. New dose: '+nd:''}.\n${bul(plan)}\n• Follow up in ${vp('thy-fu')}.`;
 };
 
 G.gerd=function(){
@@ -335,7 +343,7 @@ G.uti=function(){
   const isMale=v('uti-sex').toLowerCase().startsWith('male');
   const pregnancyLine=isMale?'':v('uti-pregnant');
   const vits=[v('uti-temp')?'Temp: '+v('uti-temp')+'\u00b0C':'',v('uti-bp')?'BP: '+v('uti-bp'):'',v('uti-hr')?'HR: '+v('uti-hr')+' bpm':''].filter(Boolean).join(', ');
-  return `S:\n${vp('uti-sex')} patient presents with ${usx.length?usx.join(', '):'urinary symptoms'} for ${vp('uti-duration')}.${upsx.length?' Upper UTI / systemic symptoms: '+upsx.join(', ')+'.':' No fever, flank pain, nausea, or systemic symptoms.'} ${v('uti-recurrent')}${pregnancyLine?' '+pregnancyLine:''}${allergies?' Allergies: '+allergies+'.':' No known allergies.'}\n\nO:\n${vits||'Vitals stable.'}${abnExam.length?' Exam: '+abnExam.join(', ')+'.':' Abdomen: suprapubic area non-tender. No CVA tenderness.'}\nUrinalysis: ${vp('uti-ua')}.\n\nA:\n• ${vp('uti-dx')}.\n\nP:\n${abx?'• '+abx+(abxdose?' '+abxdose:'')+' prescribed.\n':''}${bul(plan)}\n• Follow up: ${vp('uti-fu')}.`;
+  return `S:\n${vp('uti-sex')} patient presents with ${usx.length?usx.join(', '):'urinary symptoms'} for ${vp('uti-duration')}.${upsx.length?' Upper UTI / systemic symptoms: '+upsx.join(', ')+'.':' No fever, flank pain, nausea, or systemic symptoms.'} ${v('uti-recurrent')}${pregnancyLine?' '+pregnancyLine:''}${allergies?' Allergies: '+allergies+'.':' No known allergies.'}\n\nO:\n${vits?vits+'.':'Vitals stable.'}${abnExam.length?' Exam: '+abnExam.join(', ')+'.':' Abdomen: suprapubic area non-tender. No CVA tenderness.'}\nUrinalysis: ${vp('uti-ua')}.\n\nA:\n• ${vp('uti-dx')}.\n\nP:\n${abx?'• '+abx+(abxdose?' '+abxdose:'')+' prescribed.\n':''}${bul(plan)}\n• Follow up: ${vp('uti-fu')}.`;
 };
 
 // ── NEW GENERATORS ──────────────────────────────────────────
@@ -346,7 +354,7 @@ G['dep-initial']=function(){
   const abnAppear=picks([['di-agitated','Agitated / psychomotor agitation'],['di-dishevelled','Dishevelled / poor self-care'],['di-uncooperative','Uncooperative'],['di-abnormal-speech','Abnormal rate or tone of speech'],['di-disorganised','Disorganised / illogical thought']]);
   const plan=picks([['di-edu','Psychoeducation on depression provided'],['di-lifestyle','Lifestyle advice: sleep hygiene, physical activity, routine'],['di-monitor','Monitor for side effects and response in 2–4 weeks'],['di-crisis','Crisis contact information provided'],['di-referral','Referral to mental health / counselling placed'],['di-safety-plan','Safety plan documented'],['di-phq9-repeat','PHQ-9 to be repeated at follow-up']]);
   const phq=v('di-phq9'); const meds=v('di-meds');
-  return `S:\nPatient presents with depressive symptoms for ${vp('di-duration')}. Presenting concern: ${vp('di-reason')}. Symptoms include: ${sx.length?sx.join(', '):'[see notes]'}. ${v('di-si')} Precipitating factors: ${v('di-trigger')} Psychiatric history: ${v('di-pmh')} Family psychiatric history: ${v('di-fmh')} Substance use: ${v('di-etoh')}${meds?' Current medications: '+meds+'.':' No current medications or known allergies.'}\n\nO:\nMood: ${vp('di-omood')}. Affect: ${vp('di-affect')}.${abnAppear.length?' Abnormal behaviour / appearance: '+abnAppear.join(', ')+'.':' Cooperative, appropriate appearance, normal speech, logical thought process.'} ${v('di-psych')}${phq?' PHQ-9 score: '+phq+'.':''}\n\nA:\n• ${vp('di-dx')}.\n• Severity: ${vp('di-severity')}.\n• Safety: ${v('di-safety')}\n\nP:\n• ${vp('di-tx')}.${med?'\n• '+med+' initiated.':''}\n${bul(plan)}\n• Follow up in ${vp('di-fu')}.`;
+  return `S:\nPatient presents with depressive symptoms for ${vp('di-duration')}. Presenting concern: ${vp('di-reason')}. Symptoms include: ${sx.length?sx.join(', '):'[see notes]'}. ${v('di-si')} ${cap(v('di-trigger'))} ${cap(v('di-pmh'))} ${cap(v('di-fmh'))} ${cap(v('di-etoh'))}${meds?' Current medications: '+meds+'.':' No current medications or known allergies.'}\n\nO:\nMood: ${vp('di-omood')}. Affect: ${vp('di-affect')}.${abnAppear.length?' Abnormal behaviour / appearance: '+abnAppear.join(', ')+'.':' Cooperative, appropriate appearance, normal speech, logical thought process.'} ${v('di-psych')}${phq?' PHQ-9 score: '+phq+'.':''}\n\nA:\n• ${vp('di-dx')}.\n• Severity: ${vp('di-severity')}.\n• Safety: ${v('di-safety')}\n\nP:\n• ${vp('di-tx')}.${med?'\n• '+med+' initiated.':''}\n${bul(plan)}\n• Follow up in ${vp('di-fu')}.`;
 };
 
 G.handpain=function(){
@@ -354,7 +362,7 @@ G.handpain=function(){
   const hx=picks([['hp-oa','osteoarthritis'],['hp-ra','rheumatoid arthritis'],['hp-trauma','recent trauma/fracture'],['hp-repetitive','repetitive occupational use'],['hp-diabetes','diabetes'],['hp-thyroid','thyroid disorder']]);
   const exam=picks([['hp-swelling-exam','Swelling noted'],['hp-tenderness','Tenderness on palpation'],['hp-reduced-rom','Reduced range of motion'],['hp-grip-weak','Reduced grip strength'],['hp-deformity','Joint deformity noted']]);
   const plan=picks([['hp-reassure','Reassure and educate patient'],['hp-analgesia','Analgesia: acetaminophen / NSAID PRN'],['hp-splint','Splinting recommended'],['hp-physio','Hand physiotherapy / occupational therapy referral placed'],['hp-injection','Corticosteroid injection considered / arranged'],['hp-imaging-plan','Imaging ordered (X-ray / ultrasound / MRI)'],['hp-rheum','Rheumatology referral placed'],['hp-ortho','Orthopedic / hand surgery referral placed'],['hp-nerve','Nerve conduction study ordered']]);
-  return `S:\nPatient presents with ${vp('hp-char')} affecting the ${vp('hp-dominant').toLowerCase().replace(' affected','')} for ${vp('hp-duration')}. Onset: ${vp('hp-onset')}. Location: ${vp('hp-loc')}. Intensity ${v('hp-pain')||'?'}/10. ${sx.length?'Associated symptoms: '+sx.join(', ')+'. ':'No significant associated symptoms. '}Aggravated by ${vp('hp-aggr')}; relieved by ${vp('hp-relief')}. ${hx.length?'Relevant history: '+hx.join(', ')+'.':'No significant past hand or joint history.'}\n\nO:\n${exam.length?exam.join('. ')+'.':''}\nSpecial tests: ${vp('hp-tests')}.\nImaging: ${vp('hp-xray')}.\n\nA:\nDiagnosis: ${vp('hp-dx')}.\n\nP:\n${bul(plan)}\n• Follow up in ${vp('hp-fu')}.`;
+  return `S:\nPatient presents with ${vp('hp-char')} affecting the ${vp('hp-dominant').toLowerCase().replace(' affected','')} for ${vp('hp-duration')}. Onset: ${vp('hp-onset')}. Location: ${vp('hp-loc')}. ${v('hp-pain')?'Intensity '+v('hp-pain')+'/10.':''} ${sx.length?'Associated symptoms: '+sx.join(', ')+'. ':'No significant associated symptoms. '}Aggravated by ${vp('hp-aggr')}; relieved by ${vp('hp-relief')}. ${hx.length?'Relevant history: '+hx.join(', ')+'.':'No significant past hand or joint history.'}\n\nO:\n${exam.length?exam.join('. ')+'.':''}\nSpecial tests: ${vp('hp-tests')}.\nImaging: ${vp('hp-xray')}.\n\nA:\n${vp('hp-dx')}.\n\nP:\n${bul(plan)}\n• Follow up in ${vp('hp-fu')}.`;
 };
 
 G.kneepain=function(){
@@ -364,7 +372,7 @@ G.kneepain=function(){
   const plan=picks([['kp-reassure','Reassure and educate patient'],['kp-analgesia','Analgesia: acetaminophen / NSAID PRN'],['kp-ice','Ice and elevation for acute swelling'],['kp-physio','Physiotherapy referral for strengthening and mobility'],['kp-weightloss','Weight loss counselled'],['kp-brace','Knee brace / support recommended'],['kp-injection','Corticosteroid / hyaluronic acid injection considered'],['kp-imaging-plan','Further imaging ordered (X-ray / MRI)'],['kp-ortho','Orthopedic referral placed'],['kp-activity-mod','Activity modification advised']]);
   const kpOnset=v('kp-onset');
   const kpOnsetStr=kpOnset.toLowerCase().includes('onset')?kpOnset:kpOnset+'.';
-  return `S:\nPatient presents with ${vp('kp-side').toLowerCase()} pain for ${vp('kp-duration')}. Onset: ${kpOnsetStr} Location: ${vp('kp-loc')}, character: ${vp('kp-char')}, ${v('kp-pain')||'?'}/10 intensity. ${sx.length?'Associated symptoms: '+sx.join(', ')+'. ':'No swelling, locking, giving way, or significant associated symptoms. '}Aggravated by ${vp('kp-aggr')}; relieved by ${vp('kp-relief')}. ${hx.length?'Relevant history: '+hx.join(', ')+'.':'No significant past knee or joint history.'}\n\nO:\n${exam.length?exam.join('. ')+'.':''}\nSpecial tests: ${vp('kp-tests')}.\nImaging: ${vp('kp-xray')}.\n\nA:\nDiagnosis: ${vp('kp-dx')}.\n\nP:\n${bul(plan)}\n• Follow up in ${vp('kp-fu')}.`;
+  return `S:\nPatient presents with ${vp('kp-side').toLowerCase()} pain for ${vp('kp-duration')}. Onset: ${kpOnsetStr} Location: ${vp('kp-loc')}, character: ${vp('kp-char')}${pain('kp-pain','intensity')}. ${sx.length?'Associated symptoms: '+sx.join(', ')+'. ':'No swelling, locking, giving way, or significant associated symptoms. '}Aggravated by ${vp('kp-aggr')}; relieved by ${vp('kp-relief')}. ${hx.length?'Relevant history: '+hx.join(', ')+'.':'No significant past knee or joint history.'}\n\nO:\n${exam.length?exam.join('. ')+'.':''}\nSpecial tests: ${vp('kp-tests')}.\nImaging: ${vp('kp-xray')}.\n\nA:\n${vp('kp-dx')}.\n\nP:\n${bul(plan)}\n• Follow up in ${vp('kp-fu')}.`;
 };
 
 G.ihd=function(){
@@ -375,7 +383,7 @@ G.ihd=function(){
   const plan=picks([['ihd-contmeds','Continue all current cardiac medications'],['ihd-aspirin','Aspirin / antiplatelet therapy continued'],['ihd-statin','Statin therapy reviewed and continued'],['ihd-bblocker','Beta-blocker dose reviewed'],['ihd-acei','ACE inhibitor / ARB reviewed'],['ihd-lipids','Lipid panel ordered if not done within last year'],['ihd-ecg','ECG ordered / reviewed'],['ihd-exercise','Cardiac rehabilitation / structured exercise advised'],['ihd-smoking-cessation','Smoking cessation support offered'],['ihd-diet','Heart-healthy diet counselled'],['ihd-cardio-ref','Cardiology referral placed'],['ihd-stress','Stress test / imaging ordered']]);
   const ldl=v('ihd-ldl');
   const oVits=[v('ihd-bp')?'BP: '+v('ihd-bp'):'',v('ihd-hr')?'HR: '+v('ihd-hr')+' bpm':'',v('ihd-wt')?'Weight: '+v('ihd-wt')+' lbs':'',v('ihd-spo2')?'SpO2: '+v('ihd-spo2')+'%':''].filter(Boolean).join('. ');
-  return `S:\nPatient presents for follow-up of ischemic heart disease. ${meds?'Current medications: '+meds+'. ':''}${v('ihd-adherence')} ${sx.length?'Current symptoms: '+sx.join(', ')+'. ':'Denies chest pain, shortness of breath, palpitations, syncope, fatigue, or reduced exercise tolerance. '}Angina: ${vp('ihd-angina-freq')}. GTN use: ${vp('ihd-gtn')}.${rf.length?' Active cardiac risk factors: '+rf.join(', ')+'.':''}\n\nO:\n${oVits?oVits+'.':'Vitals stable.'}\n${abnExam.length?'Abnormal findings: '+abnExam.join(', ')+'.':'No acute distress. CV: regular rate and rhythm. Lungs clear. No peripheral oedema.'}\nInvestigations: ${vp('ihd-invx')}.${ldl?'\n'+ldl+'.':''}\n\nA:\n• Status: ${vp('ihd-status')}.\n• Risk factor control: ${vp('ihd-riskctrl')}.\n\nP:\n${bul(plan)}\n• Follow up in ${vp('ihd-fu')}.`;
+  return `S:\nPatient presents for follow-up of ischemic heart disease. ${meds?'Current medications: '+meds+'. ':''}${v('ihd-adherence')} ${sx.length?'Current symptoms: '+sx.join(', ')+'. ':'Denies chest pain, shortness of breath, palpitations, syncope, fatigue, or reduced exercise tolerance. '}${vp('ihd-angina-freq')}. GTN use: ${vp('ihd-gtn')}.${rf.length?' Active cardiac risk factors: '+rf.join(', ')+'.':''}\n\nO:\n${oVits?oVits+'.':'Vitals stable.'}\n${abnExam.length?'Abnormal findings: '+abnExam.join(', ')+'.':'No acute distress. CV: regular rate and rhythm. Lungs clear. No peripheral oedema.'}\n${vp('ihd-invx')}.${ldl?'\n'+ldl+'.':''}\n\nA:\n• ${vp('ihd-status')}.\n• ${vp('ihd-riskctrl')}.\n\nP:\n${bul(plan)}\n• Follow up in ${vp('ihd-fu')}.`;
 };
 
 G.hf=function(){
@@ -386,7 +394,7 @@ G.hf=function(){
   const ef=v('hf-ef');
   const hfType=v('hf-type').charAt(0).toLowerCase()+v('hf-type').slice(1).replace(/\.$/,'');
   const oVits=[v('hf-bp')?'BP: '+v('hf-bp'):'',v('hf-hr')?'HR: '+v('hf-hr')+' bpm':'',v('hf-wt')?'Weight: '+v('hf-wt')+' lbs':'',v('hf-spo2')?'SpO2: '+v('hf-spo2')+'%':'',v('hf-rr')?'RR: '+v('hf-rr'):''].filter(Boolean).join('. ');
-  return `S:\nPatient presents for follow-up of ${hfType}. ${meds?'Current medications: '+meds+'. ':''}${v('hf-adherence')} Weight monitoring: ${v('hf-weight-mon')} ${sx.length?'Current symptoms: '+sx.join(', ')+'. ':'No significant symptoms of decompensation reported. '}Functional class: ${vp('hf-nyha')}. Fluid and dietary adherence: ${vp('hf-fluid')}.\n\nO:\n${oVits?oVits+'.':'Vitals stable.'}\n${abnExam.length?'Abnormal findings: '+abnExam.join(', ')+'.':'No acute distress. Regular rate and rhythm. Lungs clear. No oedema. No raised JVP.'}\nInvestigations: ${vp('hf-invx')}.${ef?'\n'+ef+'.':''}\n\nA:\n• Status: ${vp('hf-status')}.\n• Volume status: ${vp('hf-volume')}.\n\nP:\n${bul(plan)}\n• Follow up in ${vp('hf-fu')}.`;
+  return `S:\nPatient presents for follow-up of ${hfType}. ${meds?'Current medications: '+meds+'. ':''}${v('hf-adherence')} ${cap(v('hf-weight-mon'))} ${sx.length?'Current symptoms: '+sx.join(', ')+'. ':'No significant symptoms of decompensation reported. '}${vp('hf-nyha')}. ${vp('hf-fluid')}.\n\nO:\n${oVits?oVits+'.':'Vitals stable.'}\n${abnExam.length?'Abnormal findings: '+abnExam.join(', ')+'.':'No acute distress. Regular rate and rhythm. Lungs clear. No oedema. No raised JVP.'}\n${vp('hf-invx')}.${ef?'\n'+ef+'.':''}\n\nA:\n• ${vp('hf-status')}.\n• ${vp('hf-volume')}.\n\nP:\n${bul(plan)}\n• Follow up in ${vp('hf-fu')}.`;
 };
 // ── COMPACT MODE TOGGLE ──────────────────────────────────────
 let compactMode = false;
@@ -405,12 +413,9 @@ function toggleMode() {
     badge.style.display = 'none';
   }
   // If a note is already generated, regenerate it in the new mode
-  const active = document.querySelector('.form-panel.active');
-  if (active) {
-    const type = active.id.replace('panel-', '');
-    const out = document.getElementById('out-' + type);
-    if (out && out.style.display !== 'none') generate(type);
-  }
+  const out = document.getElementById('visit-out');
+  if (out && out.style.display !== 'none') generateVisit();
+  if (typeof saveState === 'function') saveState();
 }
 
 // ── COMPACT GENERATORS ──────────────────────────────────────
@@ -422,6 +427,38 @@ function vits(pairs) {
 
 const C = {
 
+refill(){
+  const cond=v('rx-condition');
+  const meds=medList('rx')||'current medication';
+  const sx=v('rx-sx'), seDetail=v('rx-se-detail'), labs=v('rx-labs');
+  const examDetail=v('rx-exam-detail'), supply=v('rx-supply'), other=v('rx-p-other');
+  const oVits=vits([[v('rx-bp'),'BP'],[v('rx-hr'),'HR'],[v('rx-wt'),'wt']]);
+  const seVal=v('rx-se');
+  const seLine=seVal.toLowerCase().startsWith('no ')?'':seVal;
+  const examVal=v('rx-exam');
+  const examLine=examVal.toLowerCase().startsWith('no acute')?'':examVal;
+  const plan=picks([
+    ['rx-p-refill','Refill '+meds+(supply?' — '+supply:'')],
+    ['rx-p-continue','Continue current dose'],
+    ['rx-p-adjust','Dose adjusted'],
+    ['rx-p-labs','Labs / monitoring ordered'],
+    ['rx-p-lifestyle','Lifestyle reinforced'],
+    ['rx-p-counsel','Counselled on side effects'],
+    ['rx-p-adherence','Adherence discussed'],
+    ['rx-p-referral','Referral placed']
+  ]);
+  if(other)plan.push(cap(other));
+  return `${pick(RV.compact.refill.open)}${cond?' — '+cond:''}. ${meds}, ${vp('rx-adherence')}, ${vp('rx-interval')}.${sx?' '+cap(ensureDot(sx)):''}${seLine?' '+seLine:''}${seDetail?' '+cap(ensureDot(seDetail)):''}
+
+O: ${oVits?oVits+'.':''}${labs?' '+cap(ensureDot(labs)):''}${examLine?' '+examLine:''}${examDetail?' '+cap(ensureDot(examDetail)):''}
+
+A: ${cond?cap(cond):'Chronic therapy'} — ${vp('rx-status')}. ${v('rx-tol')}
+
+P:
+${bul(plan)}
+• F/u ${vp('rx-fu')}.`;
+},
+
 'dep-initial'() {
   const drug=v('di-drug');const dose=v('di-dose');const med=drug?(dose?drug+' '+dose:drug):null;
   const sx=picks([['di-low-mood','low mood'],['di-anhedonia','anhedonia'],['di-fatigue','fatigue'],['di-concentration','poor concentration'],['di-worthless','worthlessness/guilt'],['di-sleep','sleep disturbance'],['di-appetite','appetite change'],['di-psychomotor','psychomotor changes']]);
@@ -432,13 +469,13 @@ const C = {
 },
 
 depression() {
-  const drug=v('dep-drug')||'current antidepressant';const med=v('dep-dose')?drug+' '+v('dep-dose'):drug;
+  const namedDrug=v('dep-drug');const drug=namedDrug||'current antidepressant';const med=v('dep-dose')?drug+' '+v('dep-dose'):drug;
   const sx=picks([['dep-fatigue','fatigue'],['dep-motivation','low motivation'],['dep-anhedonia','anhedonia'],['dep-concentration','poor concentration']]);
   const abnAppear=picks([['dep-agitated','Agitated'],['dep-dishevelled','Dishevelled'],['dep-uncooperative','Uncooperative'],['dep-abnormal-speech','Abnormal speech'],['dep-disorganised','Disorganised thought']]);
   const plan=picks([['dep-monitor','Monitor side effects and mood'],['dep-sleep-hyg','Sleep hygiene and routine'],['dep-activity','Regular physical activity'],['dep-crisis','Crisis line provided'],['dep-referral','Mental health / counselling referral'],['dep-therapy','CBT / therapy discussed']]);
   const safetyVal=v('dep-safety');const safetyLine=safetyVal.toLowerCase().includes('no acute')?'':'Safety: '+safetyVal;
   const seVal=v('dep-se');
-  return `S: F/u depression. Mood ${vp('dep-mood')} on ${med}.${sx.length?' Sx: '+sx.join(', ')+'.':''} Sleep: ${vp('dep-sleep')}. Appetite: ${vp('dep-appetite')}.${!seVal.toLowerCase().startsWith('no')?' '+seVal:''}\n\nO: Mood: ${vp('dep-omood')}. Affect: ${vp('dep-affect')}.${abnAppear.length?' Abnormal: '+abnAppear.join(', ')+'.':''}\n\nA: MDD — ${vp('dep-status')}.${safetyLine?' '+safetyLine:''}\n\nP:\n• ${vp('dep-rx')} (${med}).\n${bul(plan)}\n• F/u ${vp('dep-fu')}.`;
+  return `S: F/u depression. Mood ${vp('dep-mood')} on ${med}.${sx.length?' Sx: '+sx.join(', ')+'.':''} Sleep: ${vp('dep-sleep')}. Appetite: ${vp('dep-appetite')}.${!seVal.toLowerCase().startsWith('no')?' '+seVal:''}\n\nO: Mood: ${vp('dep-omood')}. Affect: ${vp('dep-affect')}.${abnAppear.length?' Abnormal: '+abnAppear.join(', ')+'.':''}\n\nA: MDD — ${vp('dep-status')}.${safetyLine?' '+safetyLine:''}\n\nP:\n• ${vp('dep-rx')}${namedDrug?' ('+med+')':''}.\n${bul(plan)}\n• F/u ${vp('dep-fu')}.`;
 },
 
 'anx-initial'() {
@@ -465,7 +502,7 @@ t2dm() {
   const a1c=v('dm-a1c');const a1cd=v('dm-a1cdate');
   const oVits=vits([[v('dm-bp'),'BP'],[v('dm-hr'),'HR'],[v('dm-wt'),'wt']]);
   const examVal=v('dm-exam');const examLine=examVal.toLowerCase().startsWith('no acute')?'':'Exam: '+examVal;
-  return `${pick(RV.compact.dm.open)} ${med}, ${vp('dm-adherence')}.${sx.length?' Sx: '+sx.join(', ')+'.':''}\n\nO: A1C ${a1c?a1c+'%':'[pending]'}${a1cd?' ('+a1cd+')':''}${oVits?', '+oVits:''}.${examLine?' '+examLine:''}\n\nA: T2DM — ${vp('dm-status')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('dm-fu')}.`;
+  return `${pick(RV.compact.dm.open)} ${med}, ${vp('dm-adherence')}.${sx.length?' Sx: '+sx.join(', ')+'.':''}\n\nO: A1C ${a1c?a1c+'%':'pending'}${a1cd?' ('+a1cd+')':''}${oVits?', '+oVits:''}.${examLine?' '+examLine:''}\n\nA: T2DM — ${vp('dm-status')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('dm-fu')}.`;
 },
 
 htn() {
@@ -484,7 +521,7 @@ thyroid() {
   const hypersx=picks([['thy-palp','palpitations'],['thy-sweating','heat intolerance'],['thy-tremor','tremor'],['thy-weightloss','weight loss'],['thy-insomnia','insomnia'],['thy-anxious','anxiety']]);
   const plan=picks([['thy-refill','Refill '+med],['thy-timing','Correct timing reinforced'],['thy-labs','TSH in 6–8 wks (dose change)'],['thy-labs-annual','Annual TSH/T4'],['thy-interactions','Drug interactions reviewed'],['thy-endo','Endocrinology referral']]);
   const nd=v('thy-newdose');const oVits=vits([[v('thy-hr'),'HR'],[v('thy-wt'),'wt']]);
-  return `${pick(RV.compact.thy.open)} ${med}, ${vp('thy-adherence')}.${hyposx.length?' Hypothyroid sx: '+hyposx.join(', ')+'.':''}${hypersx.length?' Over-replacement sx: '+hypersx.join(', ')+'.':''}\n\nO: TSH ${v('thy-tsh')||'[pending]'}${v('thy-tshdate')?' ('+v('thy-tshdate')+')':''}${v('thy-t4')?', T4 '+v('thy-t4'):''}${oVits?', '+oVits:''}. ${v('thy-exam')}\n\nA: Hypothyroidism — ${vp('thy-status')}.\n\nP:\n• ${vp('thy-action')}${nd?' — '+nd:''}.\n${bul(plan)}\n• F/u ${vp('thy-fu')}.`;
+  return `${pick(RV.compact.thy.open)} ${med}, ${vp('thy-adherence')}.${hyposx.length?' Hypothyroid sx: '+hyposx.join(', ')+'.':''}${hypersx.length?' Over-replacement sx: '+hypersx.join(', ')+'.':''}\n\nO: TSH ${v('thy-tsh')||'pending'}${v('thy-tshdate')?' ('+v('thy-tshdate')+')':''}${v('thy-t4')?', T4 '+v('thy-t4'):''}${oVits?', '+oVits:''}. ${v('thy-exam')}\n\nA: ${vp('thy-status')}.\n\nP:\n• ${vp('thy-action')}${nd?' — '+nd:''}.\n${bul(plan)}\n• F/u ${vp('thy-fu')}.`;
 },
 
 gerd() {
@@ -518,23 +555,23 @@ backpain() {
   const onset=v('bp-onset');const onsetStr=onset.startsWith('gradual')?'gradual onset':'onset '+onset;
   const plan=picks([['bp-reassure','Reassured'],['bp-activity','Gentle activity'],['bp-ibu','Ibuprofen 400 mg q6–8h PRN'],['bp-heat','Heat'],['bp-stretch','Stretching'],['bp-physio','Physio referral'],['bp-imaging','Imaging ordered'],['bp-neuro-warn','Return if neuro sx']]);
   const examOut=[...posExam,...(abnExam.length?['Abnormal: '+abnExam.join(', ')]:['Neuro intact, SLR negative'])];
-  return `S: Low back pain for ${vp('bp-duration')}, ${onsetStr}. ${vp('bp-char')}, ${v('bp-pain-rest')||'?'}/10 rest, ${v('bp-pain-move')||'?'}/10 mvmt.${rf.length?' Red flags: '+rf.join(', ')+'.':''}\n\nO: ${examOut.join('. ')}.\n\nA: ${vp('bp-dx')}.${rf.length?' Red flags present — serious pathology to be excluded.':''}\n\nP:\n${bul(plan)}\n• F/u ${vp('bp-fu')}.`;
+  return `S: Low back pain for ${vp('bp-duration')}, ${onsetStr}. ${vp('bp-char')}${pain('bp-pain-rest','rest')}${pain('bp-pain-move','mvmt')}.${rf.length?' Red flags: '+rf.join(', ')+'.':''}\n\nO: ${examOut.join('. ')}.\n\nA: ${vp('bp-dx')}.${rf.length?' Red flags present — serious pathology to be excluded.':''}\n\nP:\n${bul(plan)}\n• F/u ${vp('bp-fu')}.`;
 },
 
 headache() {
   const assoc=picks([['ha-nausea','nausea'],['ha-vomit','vomiting'],['ha-visual','visual changes'],['ha-photo','photophobia'],['ha-phono','phonophobia'],['ha-weakness','weakness']]);
   const abnExam=picks([['ha-neuro-deficit','Focal neuro deficit'],['ha-cn-deficit','Cranial nerve deficit'],['ha-papilloedema','Papilloedema'],['ha-neck-stiff','Neck stiffness'],['ha-sinus-tender','Sinus/temporal artery tenderness'],['ha-disoriented','Disoriented']]);
   const plan=picks([['ha-reassure','Reassurance, stress management'],['ha-sleep','Adequate sleep advised'],['ha-apap','Acetaminophen 500 mg q6h PRN'],['ha-ibu','Ibuprofen 400 mg q6–8h PRN'],['ha-hydration','Hydration/regular meals'],['ha-caffeine','Reduce caffeine/screen time'],['ha-triptan','Triptan prescribed'],['ha-neuro','Neurology referral']]);
-  return `S: Headache for ${vp('ha-dur')}, ${vp('ha-onset')}. ${vp('ha-loc')}, ${vp('ha-char')}, ${v('ha-pain')||'?'}/10.${assoc.length?' '+assoc.join(', ')+'.':''} Aggravated by ${vp('ha-aggr')}.\n\nO:${chk('ha-disoriented')?'':' Alert, oriented.'}${abnExam.length?' Abnormal: '+abnExam.join(', ')+'.':' No focal neuro deficits.'}\n\nA: ${vp('ha-dx')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('ha-fu')}.`;
+  return `S: Headache for ${vp('ha-dur')}, ${vp('ha-onset')}. ${vp('ha-loc')}, ${vp('ha-char')}${pain('ha-pain')}.${assoc.length?' '+assoc.join(', ')+'.':''} Aggravated by ${vp('ha-aggr')}.\n\nO:${chk('ha-disoriented')?'':' Alert, oriented.'}${abnExam.length?' Abnormal: '+abnExam.join(', ')+'.':' No focal neuro deficits.'}\n\nA: ${vp('ha-dx')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('ha-fu')}.`;
 },
 
 chestpain() {
   const assoc=picks([['cp-radiation','radiation to arm/jaw'],['cp-sob','SOB'],['cp-nausea','nausea'],['cp-diaphoresis','diaphoresis'],['cp-palp','palpitations'],['cp-syncope','syncope']]);
   const hx=picks([['cp-htn','HTN'],['cp-cardiac','cardiac hx'],['cp-smoker','smoker'],['cp-dm','DM'],['cp-trauma','recent trauma']]);
   const abnExam=picks([['cp-acute-distress','Acute distress'],['cp-murmur','Murmur'],['cp-lungs-abn','Lungs abnormal'],['cp-abd-tender','Abdominal tenderness'],['cp-cw-tender','Chest wall tenderness']]);
-  const plan=picks([['cp-ecg-ord','ECG + troponin ordered'],['cp-troponin','Troponin ordered'],['cp-reassure','Reassured'],['cp-no-exert','Avoid exertion'],['cp-nsaid','NSAID if cardiac excluded'],['cp-er-warn','ER precautions given'],['cp-cardio','Cardiology referral'],['cp-stress','Stress test ordered']]);
+  const plan=picks([['cp-ecg-ord','ECG ordered'],['cp-troponin','Troponin ordered'],['cp-reassure','Reassured'],['cp-no-exert','Avoid exertion'],['cp-nsaid','NSAID if cardiac excluded'],['cp-er-warn','ER precautions given'],['cp-cardio','Cardiology referral'],['cp-stress','Stress test ordered']]);
   const oVits=vits([[v('cp-bp'),'BP'],[v('cp-hr'),'HR'],[v('cp-rr'),'RR'],[v('cp-temp'),'T'],[v('cp-spo2'),'SpO2']]);
-  return `S: Chest pain for ${vp('cp-dur')}, ${vp('cp-loc').toLowerCase()}, ${v('cp-pain')||'?'}/10, ${vp('cp-onset').toLowerCase()}.${assoc.length?' '+assoc.join(', ')+'.':''}${hx.length?' PMHx: '+hx.join(', ')+'.':''}\n\nO: ${oVits||'Vitals stable'}.${abnExam.length?' '+abnExam.join(', ')+'.':''} ECG: ${vp('cp-ecg')}.\n\nA: ${vp('cp-dx')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('cp-fu')}.`;
+  return `S: Chest pain for ${vp('cp-dur')}, ${vp('cp-loc').toLowerCase()}${pain('cp-pain')}, ${vp('cp-onset').toLowerCase()}.${assoc.length?' '+assoc.join(', ')+'.':''}${hx.length?' PMHx: '+hx.join(', ')+'.':''}\n\nO: ${oVits||'Vitals stable'}.${abnExam.length?' '+abnExam.join(', ')+'.':''} ECG: ${vp('cp-ecg')}.\n\nA: ${vp('cp-dx')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('cp-fu')}.`;
 },
 
 cold() {
@@ -578,7 +615,7 @@ handpain() {
   const hx=picks([['hp-oa','OA'],['hp-ra','RA'],['hp-trauma','trauma'],['hp-repetitive','repetitive use'],['hp-diabetes','DM'],['hp-thyroid','thyroid hx']]);
   const exam=picks([['hp-swelling-exam','Swelling'],['hp-tenderness','Tenderness'],['hp-reduced-rom','Reduced ROM'],['hp-grip-weak','Reduced grip strength'],['hp-deformity','Deformity']]);
   const plan=picks([['hp-reassure','Reassured'],['hp-analgesia','Analgesia PRN'],['hp-splint','Splint'],['hp-physio','Hand physio/OT referral'],['hp-injection','Steroid injection arranged'],['hp-imaging-plan','Imaging ordered'],['hp-rheum','Rheumatology referral'],['hp-ortho','Orthopedic referral'],['hp-nerve','Nerve conduction study ordered']]);
-  return `S: ${vp('hp-dominant').replace(' affected','')} — ${vp('hp-char')}, ${vp('hp-duration')}, ${vp('hp-onset').toLowerCase()}. ${vp('hp-loc')}, ${v('hp-pain')||'?'}/10.${sx.length?' '+sx.join(', ')+'.':''}${hx.length?' PMHx: '+hx.join(', ')+'.':''}\n\nO:${exam.length?' '+exam.join(', ')+'.':' No significant findings.'}\nTests: ${vp('hp-tests')}.\nImaging: ${vp('hp-xray')}.\n\nA: ${vp('hp-dx')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('hp-fu')}.`;
+  return `S: ${vp('hp-dominant').replace(' affected','')} — ${vp('hp-char')}, ${vp('hp-duration')}, ${vp('hp-onset').toLowerCase()}. ${vp('hp-loc')}${pain('hp-pain')}.${sx.length?' '+sx.join(', ')+'.':''}${hx.length?' PMHx: '+hx.join(', ')+'.':''}\n\nO:${exam.length?' '+exam.join(', ')+'.':' No significant findings.'}\nTests: ${vp('hp-tests')}.\nImaging: ${vp('hp-xray')}.\n\nA: ${vp('hp-dx')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('hp-fu')}.`;
 },
 
 kneepain() {
@@ -586,7 +623,7 @@ kneepain() {
   const hx=picks([['kp-oa','OA'],['kp-ra','RA'],['kp-trauma','trauma'],['kp-overweight','obesity'],['kp-prev-injury','prior knee injury/surgery'],['kp-sport','high-impact sport']]);
   const exam=picks([['kp-effusion','Effusion'],['kp-tender','Joint line tenderness'],['kp-reduced-rom','Reduced ROM'],['kp-instability','Ligamentous instability'],['kp-neuro-deficit','Neurovascular deficit']]);
   const plan=picks([['kp-reassure','Reassured'],['kp-analgesia','Analgesia PRN'],['kp-ice','Ice/elevation'],['kp-physio','Physio referral'],['kp-weightloss','Weight loss'],['kp-brace','Brace'],['kp-injection','Steroid / hyaluronic acid injection'],['kp-imaging-plan','Imaging ordered'],['kp-ortho','Orthopedic referral'],['kp-activity-mod','Activity modification']]);
-  return `S: ${vp('kp-side')} pain for ${vp('kp-duration')}, ${vp('kp-onset').toLowerCase()}. ${vp('kp-loc')}, ${vp('kp-char')}, ${v('kp-pain')||'?'}/10.${sx.length?' '+sx.join(', ')+'.':''}${hx.length?' PMHx: '+hx.join(', ')+'.':''}\n\nO:${exam.length?' '+exam.join(', ')+'.':' No significant findings.'}\nTests: ${vp('kp-tests')}.\nImaging: ${vp('kp-xray')}.\n\nA: ${vp('kp-dx')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('kp-fu')}.`;
+  return `S: ${vp('kp-side')} pain for ${vp('kp-duration')}, ${vp('kp-onset').toLowerCase()}. ${vp('kp-loc')}, ${vp('kp-char')}${pain('kp-pain')}.${sx.length?' '+sx.join(', ')+'.':''}${hx.length?' PMHx: '+hx.join(', ')+'.':''}\n\nO:${exam.length?' '+exam.join(', ')+'.':' No significant findings.'}\nTests: ${vp('kp-tests')}.\nImaging: ${vp('kp-xray')}.\n\nA: ${vp('kp-dx')}.\n\nP:\n${bul(plan)}\n• F/u ${vp('kp-fu')}.`;
 },
 
 ihd() {
@@ -643,20 +680,573 @@ function tidy(t) {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n[ \t]+/g, '\n');
 }
-// Pick correct generator set; never fail silently — the user must
-// always see either a note or a clear error message.
-function generate(type) {
-  try {
-    const gen = compactMode ? C[type] : G[type];
-    if (typeof gen === 'function') {
-      showOut(type, tidy(gen()));
-    } else {
-      alert('This note type is not available in ' + (compactMode ? 'compact' : 'full') + ' mode yet.');
-    }
-  } catch (err) {
-    console.error('Note generation failed:', err);
-    alert('Sorry — this note could not be generated.\nPlease report this error: ' + err.message);
+
+/* ══════════════════════════════════════════════════════════════════════
+   VISIT ENGINE
+   A visit can have any number of reasons. Each reason still owns its own
+   form and its own generator (untouched below) — this layer runs each one,
+   splits the result into S / O / A / P, and writes them up as ONE note.
+   With a single reason ticked the output is byte-identical to before.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Short problem labels, used to head each block of the Plan ── */
+const TYPE_LABEL = {
+  'dep-initial':'Depression', 'depression':'Depression',
+  'anx-initial':'Anxiety',    'anxiety':'Anxiety',
+  'refill':'Medication refill',
+  't2dm':'T2DM', 'htn':'Hypertension', 'thyroid':'Hypothyroidism', 'gerd':'GERD',
+  'ihd':'Ischemic heart disease', 'hf':'Heart failure', 'inr':'INR / warfarin',
+  'backpain':'Low back pain', 'kneepain':'Knee pain', 'handpain':'Hand pain',
+  'headache':'Headache', 'chestpain':'Chest pain', 'cold':'Common cold / URI', 'uti':'UTI',
+  'child':'Well-child visit', 'ocp':'Contraception',
+  'labs':'Lab results', 'medrx':'Medication review'
+};
+
+/* Extra words that should match in the sidebar search box */
+const SEARCH_ALIASES = {
+  'refill':'medication prescription renew rx repeat script general any',
+  't2dm':'diabetes diabetic sugar metformin a1c insulin',
+  'htn':'blood pressure hypertension bp amlodipine ramipril',
+  'thyroid':'hypothyroid levothyroxine synthroid tsh',
+  'gerd':'reflux heartburn acid ppi pantoprazole omeprazole',
+  'ihd':'angina coronary cad heart ischemic',
+  'hf':'chf congestive heart failure',
+  'inr':'warfarin coumadin anticoagulation blood thinner',
+  'dep-initial':'mood sad low phq9 mental',
+  'depression':'mood sad low phq9 mental',
+  'anx-initial':'worry panic gad7 mental',
+  'anxiety':'worry panic gad7 mental',
+  'backpain':'lumbar spine sciatica back',
+  'kneepain':'joint knee leg',
+  'handpain':'wrist carpal finger hand',
+  'headache':'migraine head',
+  'chestpain':'angina chest',
+  'cold':'uri cough flu sore throat virus congestion',
+  'uti':'urine urinary bladder dysuria infection',
+  'child':'well baby paediatric pediatric immunisation immunization growth',
+  'ocp':'birth control contraception pill oral',
+  'labs':'bloodwork blood work results review',
+  'medrx':'medication review polypharmacy reconciliation'
+};
+
+function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+function ensureDot(s){ return /[.!?:]$/.test(s.trim()) ? s.trim() : s.trim() + '.'; }
+
+/* Builds "drug A 10 mg daily, drug B 5 mg BID and drug C" from paired fields */
+function medList(prefix){
+  const out = [];
+  for (let i = 1; i <= 3; i++){
+    const drug = v(prefix + '-drug' + i);
+    if (!drug) continue;
+    const dose = v(prefix + '-dose' + i);
+    out.push(dose ? drug + ' ' + dose : drug);
+  }
+  if (out.length <= 1) return out[0] || '';
+  return out.slice(0, -1).join(', ') + ' and ' + out[out.length - 1];
+}
+
+function typeLabel(type){
+  if (type === 'refill'){
+    const cond = v('rx-condition');
+    return cond ? cap(cond) : 'Medication refill';
+  }
+  return TYPE_LABEL[type] || type;
+}
+function sidebarLabel(type){
+  const btn = document.querySelector('.soap-btn[data-type="' + type + '"]');
+  return btn ? btn.textContent.trim() : typeLabel(type);
+}
+
+/* ── Splitting a finished note back into its four sections ───────────── */
+function splitNote(text){
+  const keys = ['S','O','A','P'];
+  const found = [];
+  let from = 0;
+  for (const k of keys){
+    const re = new RegExp('(?:^|\\n)' + k + ':[ \\t]*\\n?', 'g');
+    re.lastIndex = from;
+    const m = re.exec(text);
+    if (!m) return null;
+    found.push({ k: k, head: m.index, body: m.index + m[0].length });
+    from = m.index + m[0].length;
+  }
+  const out = {};
+  found.forEach((f, i) => {
+    const end = (i + 1 < found.length) ? found[i + 1].head : text.length;
+    out[f.k] = text.slice(f.body, end).trim();
+  });
+  return out;
+}
+
+/* Turn a section body into a list of items, bulleted or not */
+function toItems(section){
+  if (!section) return [];
+  const out = [];
+  section.split('\n').forEach(line => {
+    const t = line.trim();
+    if (!t) return;
+    out.push(t.replace(/^•\s*/, '').trim());
+  });
+  return out;
+}
+
+/* Drop sentences that are word-for-word repeats of one already written.
+   Only exact duplicates go — no clinical content can be lost this way. */
+function dedupeSentences(text){
+  const seen = new Set();
+  return text.split('\n').map(line => {
+    const parts = line.replace(/([.!?])\s+/g, '$1\u0001').split('\u0001');
+    const keep = parts.filter(p => {
+      const key = p.trim().toLowerCase();
+      if (!key) return false;
+      if (key.length < 5) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return keep.join(' ');
+  }).filter(l => l.trim()).join('\n');
+}
+
+/* One set of vitals per visit, however many forms recorded them */
+const VITAL_RE = /\b(BP|HR|Weight|Wt|Temp|RR|SpO2|O2 sat)\s*:\s*[^,.;\n]+/gi;
+function dedupeVitals(text){
+  const seen = new Set();
+  let out = text.replace(VITAL_RE, m => {
+    const key = m.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (seen.has(key)) return '\u0000';
+    seen.add(key);
+    return m;
+  });
+  return out
+    .replace(/\s*,\s*\u0000/g, '')
+    .replace(/\u0000\s*,\s*/g, '')
+    .replace(/\u0000/g, '');
+}
+
+/* Second and later reasons read as part of the same visit, not a new note */
+function linkOpener(s){
+  return s
+    .replace(/^Patient presents for follow-up of /i, 'Also seen for follow-up of ')
+    .replace(/^Patient presents for /i,              'Also presents for ')
+    .replace(/^Patient presents with /i,             'Also reports ')
+    .replace(/^Patient presents requesting /i,       'Also requesting ')
+    .replace(/^Patient presents /i,                  'Also presents ')
+    .replace(/^Seen today for /i,                    'Also seen today for ')
+    .replace(/^Attends for /i,                       'Also attends for ')
+    .replace(/^Patient reports /i,                   'Also reports ')
+    .replace(/^Patient is here for /i,               'Also here for ');
+}
+
+/* ── The merge itself ────────────────────────────────────────────────── */
+function mergeNotes(items){
+  const parts = [];
+  for (const it of items){
+    const p = splitNote(it.note);
+    if (!p) return null;                  // unexpected shape — caller falls back
+    parts.push({ type: it.type, p: p });
+  }
+
+  /* Subjective — one running account of the visit */
+  let S = compactMode
+    ? parts.map(x => x.p.S.trim()).filter(Boolean).join(' ')
+    : parts.map((x, i) => i === 0 ? x.p.S.trim() : linkOpener(x.p.S.trim()))
+           .filter(Boolean).join('\n');
+  S = dedupeSentences(S);
+
+  /* Objective — one set of findings, vitals recorded once */
+  let O = parts.map(x => x.p.O.trim()).filter(Boolean).join(compactMode ? ' ' : '\n');
+  O = dedupeVitals(dedupeSentences(O));
+
+  /* Assessment — a single problem list */
+  const aItems = [];
+  parts.forEach(x => toItems(x.p.A).forEach(s => {
+    if (!aItems.some(e => e.toLowerCase() === s.toLowerCase())) aItems.push(s);
+  }));
+  const A = aItems.map(s => '• ' + ensureDot(s)).join('\n');
+
+  /* Plan — grouped under each problem, with follow-up stated once at the end */
+  const groups = [];
+  const followUps = [];
+  parts.forEach(x => {
+    const items = [];
+    toItems(x.p.P).forEach(s => {
+      if (/^(follow[-\s]?up|f\/u)\b/i.test(s)){
+        followUps.push({ label: typeLabel(x.type), text: ensureDot(s) });
+      } else if (!items.some(e => e.toLowerCase() === s.toLowerCase())){
+        items.push(s);
+      }
+    });
+    if (items.length) groups.push({ label: typeLabel(x.type), items: items });
+  });
+
+  let P;
+  if (groups.length <= 1){
+    P = (groups[0] ? groups[0].items : []).map(s => '• ' + ensureDot(s)).join('\n');
+  } else {
+    P = groups.map(g => g.label + ':\n' + g.items.map(s => '• ' + ensureDot(s)).join('\n'))
+              .join('\n\n');
+  }
+  const fuLines = consolidateFollowUps(followUps);
+  if (fuLines.length) P += (P ? '\n\n' : '') + fuLines.join('\n');
+
+  return compactMode
+    ? 'S: ' + S + '\n\nO: ' + O + '\n\nA:\n' + A + '\n\nP:\n' + P
+    : 'S:\n' + S + '\n\nO:\n' + O + '\n\nA:\n' + A + '\n\nP:\n' + P;
+}
+
+/* One follow-up line for the visit. Reasons that share an interval are said
+   once; genuinely different intervals are kept and labelled, because "come
+   back in two weeks for the back" and "three months for the diabetes" are
+   different instructions and neither can be dropped. */
+function consolidateFollowUps(list){
+  if (!list.length) return [];
+  const groups = [];
+  list.forEach(f => {
+    const m = f.text.match(/^(?:follow[-\s]?up|f\/u)\b\s*(?::|in\b)?\s*(.*)$/i);
+    let rest = ((m ? m[1] : f.text) || '').trim().replace(/\.$/, '');
+    if (!rest) rest = f.text.replace(/\.$/, '');
+    const dur = rest.match(/^(\d+(?:\s*[–—-]\s*\d+)?\s*(?:day|week|month|year)s?)/i);
+    const key = (dur ? dur[1] : rest).toLowerCase().replace(/\s+/g, ' ');
+    let g = groups.find(x => x.key === key);
+    if (!g){ groups.push({ key: key, display: rest, labels: [f.label] }); return; }
+    if (rest.length > g.display.length) g.display = rest;
+    if (g.labels.indexOf(f.label) === -1) g.labels.push(f.label);
+  });
+  const verb = compactMode ? 'F/u' : 'Follow up';
+  if (groups.length === 1){
+    const d = groups[0].display;
+    return ['• ' + verb + (/^\d/.test(d) ? ' in ' : ': ') + ensureDot(d)];
+  }
+  return ['• ' + verb + ': ' +
+    groups.map(g => g.display + ' (' + g.labels.join(', ') + ')').join('; ') + '.'];
+}
+
+/* ── Selection state ─────────────────────────────────────────────────── */
+let selected = [];
+
+function toggleType(type){
+  const i = selected.indexOf(type);
+  if (i > -1) selected.splice(i, 1); else selected.push(type);
+  syncVisit();
+  saveState();
+  if (i === -1){
+    const panel = document.getElementById('panel-' + type);
+    if (panel) setTimeout(() => scrollMainTo(panel), 40);
   }
 }
 
-// build-marker: refill-wording-variants v1 (2026-08-12)
+function removeType(type){
+  const i = selected.indexOf(type);
+  if (i === -1) return;
+  selected.splice(i, 1);
+  syncVisit();
+  saveState();
+}
+
+function syncVisit(){
+  const bar = document.getElementById('visit-bar');
+  document.querySelectorAll('.soap-btn').forEach(b => {
+    const on = selected.indexOf(b.dataset.type) > -1;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  document.querySelectorAll('.form-panel').forEach(p => {
+    p.classList.toggle('active', selected.indexOf(p.id.replace('panel-', '')) > -1);
+  });
+  /* show the forms in the order they were ticked */
+  selected.forEach(t => {
+    const panel = document.getElementById('panel-' + t);
+    if (panel && bar) bar.parentNode.insertBefore(panel, bar);
+  });
+
+  const any = selected.length > 0;
+  document.getElementById('empty-state').style.display = any ? 'none' : 'flex';
+  document.getElementById('visit-head').style.display  = any ? 'flex' : 'none';
+  bar.style.display = any ? 'flex' : 'none';
+  const gen = document.getElementById('visit-generate');
+  gen.textContent = selected.length > 1
+    ? 'Generate Note (' + selected.length + ' reasons)'
+    : 'Generate Note';
+  renderChips();
+  syncVitals();
+  if (!any) hideVisitOut();
+}
+
+function renderChips(){
+  const wrap = document.getElementById('visit-chips');
+  wrap.textContent = '';
+  selected.forEach(t => {
+    const label = sidebarLabel(t);
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'chip-go';
+    go.textContent = label;
+    go.title = 'Jump to this form';
+    go.onclick = () => { const p = document.getElementById('panel-' + t); if (p) scrollMainTo(p); };
+    chip.appendChild(go);
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'chip-x';
+    x.setAttribute('aria-label', 'Remove ' + label + ' from this visit');
+    x.textContent = '✕';
+    x.onclick = () => removeType(t);
+    chip.appendChild(x);
+    wrap.appendChild(chip);
+  });
+}
+
+/* ── Vitals typed once, shared across every form in the visit ─────────── */
+const VITAL_KEYS = ['bp','hr','wt','temp'];
+function vitalKey(id){
+  const k = id.split('-').pop();
+  return VITAL_KEYS.indexOf(k) > -1 ? k : null;
+}
+function vitalFields(key){
+  return [...document.querySelectorAll('.form-panel input[type="text"]')]
+    .filter(el => vitalKey(el.id) === key);
+}
+function syncVitals(){
+  VITAL_KEYS.forEach(key => {
+    const active = vitalFields(key).filter(el => {
+      const panel = el.closest('.form-panel');
+      return panel && panel.classList.contains('active');
+    });
+    const typed = active
+      .filter(el => el.dataset.manual === '1' && el.value.trim())
+      .sort((a, b) => (+b.dataset.vitalTs || 0) - (+a.dataset.vitalTs || 0));
+    const source = typed[0] || active.find(el => el.value.trim());
+    if (!source) return;
+    active.forEach(el => {
+      if (el === source || el.dataset.manual === '1') return;
+      el.value = source.value;
+    });
+  });
+}
+
+/* ── Generate, copy, clear ───────────────────────────────────────────── */
+function generateVisit(){
+  if (!selected.length) return;
+  syncVitals();
+  const set = compactMode ? C : G;
+  const items = [], failed = [];
+  selected.forEach(t => {
+    const gen = set[t];
+    if (typeof gen !== 'function'){ failed.push(sidebarLabel(t) + ' — not available in ' + (compactMode ? 'compact' : 'full') + ' mode'); return; }
+    try { items.push({ type: t, note: gen() }); }
+    catch (err){ console.error('Note generation failed for ' + t, err); failed.push(sidebarLabel(t) + ' — ' + err.message); }
+  });
+  if (!items.length){
+    alert('Sorry — this note could not be generated.\n\n' + failed.join('\n'));
+    return;
+  }
+  let text;
+  if (items.length === 1){
+    text = tidy(items[0].note);
+  } else {
+    const merged = mergeNotes(items);
+    text = tidy(merged !== null ? merged : items.map(i => i.note).join('\n\n──────────\n\n'));
+  }
+  showVisit(text);
+  if (failed.length) alert('Everything else was included, but these could not be:\n\n• ' + failed.join('\n• '));
+}
+
+function showVisit(text){
+  document.getElementById('visit-text').textContent = text;
+  const out = document.getElementById('visit-out');
+  out.style.display = 'block';
+  setTimeout(() => scrollMainTo(out), 50);
+}
+/* Scroll so the target sits just below the pinned "This visit" bar,
+   rather than underneath it. */
+function scrollMainTo(el){
+  const main = document.getElementById('main-area');
+  const head = document.getElementById('visit-head');
+  const offset = (head && head.offsetParent !== null ? head.offsetHeight : 0) + 16;
+  const top = main.scrollTop + el.getBoundingClientRect().top - main.getBoundingClientRect().top - offset;
+  main.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+}
+
+function hideVisitOut(){ document.getElementById('visit-out').style.display = 'none'; }
+
+function copyVisit(btn){
+  const text = document.getElementById('visit-text').textContent;
+  const done = () => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 3000);
+  };
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(done).catch(() => copyFallback(text, done));
+  else copyFallback(text, done);
+}
+function copyFallback(text, done){
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  done();
+}
+
+function clearVisit(){
+  if (!confirm('Start a new patient?\n\nEverything ticked and everything typed in will be cleared.')) return;
+  document.querySelectorAll('.form-panel').forEach(p => {
+    p.querySelectorAll('input[type="text"],input[type="number"],textarea').forEach(el => { el.value = ''; delete el.dataset.manual; delete el.dataset.vitalTs; });
+    p.querySelectorAll('select').forEach(el => el.selectedIndex = 0);
+    p.querySelectorAll('input[type="checkbox"]').forEach(el => el.checked = el.defaultChecked);
+  });
+  selected = [];
+  hideVisitOut();
+  syncVisit();
+  const search = document.getElementById('type-search');
+  search.value = '';
+  filterTypes('');
+  try { localStorage.removeItem(SAVE_KEY); } catch(e){}
+  document.getElementById('main-area').scrollTop = 0;
+}
+
+/* ── Sidebar search ──────────────────────────────────────────────────── */
+function filterTypes(query){
+  const q = query.trim().toLowerCase();
+  let hits = 0;
+  document.querySelectorAll('.soap-btn').forEach(b => {
+    const hay = b.textContent.toLowerCase() + ' ' + (SEARCH_ALIASES[b.dataset.type] || '');
+    const on = !q || hay.indexOf(q) > -1;
+    b.style.display = on ? '' : 'none';
+    if (on) hits++;
+  });
+  document.querySelectorAll('.sidebar-section').forEach(sec => {
+    const visible = [...sec.querySelectorAll('.soap-btn')].some(b => b.style.display !== 'none');
+    sec.style.display = visible ? '' : 'none';
+  });
+  document.querySelectorAll('.sidebar-divider').forEach(d => { d.style.display = q ? 'none' : ''; });
+  document.getElementById('no-results').style.display = hits ? 'none' : 'block';
+}
+
+/* ── Autosave, so a closed tab never costs a half-finished note ───────── */
+const SAVE_KEY = 'soap-visit-v2';
+let saveTimer = null;
+function saveState(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      const fields = {};
+      document.querySelectorAll('.form-panel input, .form-panel select, .form-panel textarea').forEach(el => {
+        if (!el.id) return;
+        if (el.type === 'checkbox'){ if (el.checked !== el.defaultChecked) fields[el.id] = el.checked ? 1 : 0; }
+        else if (el.tagName === 'SELECT'){ if (el.selectedIndex !== 0) fields[el.id] = el.value; }
+        else if (el.value !== ''){ fields[el.id] = el.value; }
+      });
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ selected: selected, compact: compactMode, fields: fields }));
+    } catch(e){}
+  }, 400);
+}
+function restoreState(){
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch(e){}
+  if (!saved) return;
+  Object.keys(saved.fields || {}).forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!saved.fields[id];
+    else el.value = saved.fields[id];
+  });
+  if (saved.compact && !compactMode) toggleMode();
+  selected = (saved.selected || []).filter(t => document.getElementById('panel-' + t));
+}
+
+/* ── Install as a desktop app ────────────────────────────────────────── */
+let installEvent = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installEvent = e;
+  const btn = document.getElementById('install-btn');
+  if (btn) btn.style.display = 'block';
+});
+function installApp(){
+  if (!installEvent) return;
+  installEvent.prompt();
+  installEvent.userChoice.finally(() => {
+    installEvent = null;
+    const btn = document.getElementById('install-btn');
+    if (btn) btn.style.display = 'none';
+  });
+}
+function markInstalled(){
+  ['install-btn','install-manual'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  const done = document.getElementById('install-done');
+  if (done) done.style.display = 'block';
+}
+window.addEventListener('appinstalled', markInstalled);
+
+/* ── Boot ────────────────────────────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', () => {
+  /* every form gets a "Remove" control in its heading */
+  document.querySelectorAll('.form-panel').forEach(p => {
+    const type = p.id.replace('panel-', '');
+    const title = p.querySelector('.note-title');
+    if (!title) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'panel-remove';
+    btn.textContent = 'Remove';
+    btn.setAttribute('aria-label', 'Remove this reason from the visit');
+    btn.onclick = () => removeType(type);
+    title.appendChild(btn);
+  });
+
+  restoreState();
+  syncVisit();
+
+  /* typing anywhere: share the vitals, and save */
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (el && el.id && el.closest && el.closest('.form-panel')){
+      const key = vitalKey(el.id);
+      if (key && el.type === 'text'){
+        el.dataset.manual = '1';
+        el.dataset.vitalTs = String(Date.now());
+        vitalFields(key).forEach(other => {
+          if (other === el || other.dataset.manual === '1') return;
+          const panel = other.closest('.form-panel');
+          if (panel && panel.classList.contains('active')) other.value = el.value;
+        });
+      }
+    }
+    saveState();
+  });
+  document.addEventListener('change', saveState);
+
+  /* Ctrl/Cmd + Enter writes the note from anywhere on the page */
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && selected.length){
+      e.preventDefault();
+      generateVisit();
+    }
+  });
+
+  /* Enter in the search box ticks the top match and clears the search */
+  document.getElementById('type-search').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const first = [...document.querySelectorAll('.soap-btn')].find(b => b.style.display !== 'none');
+    if (!first) return;
+    if (selected.indexOf(first.dataset.type) === -1) toggleType(first.dataset.type);
+    e.target.value = '';
+    filterTypes('');
+  });
+
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) markInstalled();
+
+  if ('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+});
+
+// build-marker: multi-reason visits + general refill v2 (2026-08-20)
