@@ -331,7 +331,7 @@ G.gerd=function(){
   const rf=picks([['gerd-weightloss','unexplained weight loss'],['gerd-vomiting','persistent vomiting'],['gerd-bleeding','GI bleeding/melena'],['gerd-anaemia','anaemia'],['gerd-mass','palpable abdominal mass']]);
   const plan=picks([['gerd-refill','Refill '+med],['gerd-lifestyle','Lifestyle advice: elevate head of bed, avoid triggers, small meals'],['gerd-antacid','Antacid for breakthrough symptoms as needed'],['gerd-scope','Upper GI endoscopy referral placed'],['gerd-gastro','Gastroenterology referral placed'],['gerd-alarmwarn','Patient advised to return if alarm symptoms develop']]);
   const vits=[v('gerd-bp')?'BP: '+v('gerd-bp'):'',v('gerd-wt')?'Weight: '+v('gerd-wt')+' lbs':''].filter(Boolean).join(', ');
-  return `S:\n${pick(RV.full.gerd.open)} ${vp('gerd-adherence')} with ${med}. ${sx.length?'Ongoing symptoms: '+sx.join(', ')+'. ':pick(RV.full.gerd.negSx)}${v('gerd-control')} ${v('gerd-triggers')} ${rf.length?'Alarm symptoms present: '+rf.join(', ')+' — further investigation warranted.':pick(RV.full.gerd.negAlarm)}\n\nO:\n${vits?vits+'. ':''} ${v('gerd-exam')}\n\nA:\n• GERD — ${vp('gerd-status')}.\n• ${vp('gerd-redflag')}.\n\nP:\n• ${vp('gerd-action')}.\n${bul(plan)}\n• Follow up in ${vp('gerd-fu')}.`;
+  return `S:\n${pick(RV.full.gerd.open)} ${vp('gerd-adherence')} with ${med}. ${v('gerd-control')} ${sx.length?'Ongoing symptoms: '+sx.join(', ')+'. ':pick(RV.full.gerd.negSx)}${v('gerd-triggers')} ${rf.length?'Alarm symptoms present: '+rf.join(', ')+' — further investigation warranted.':pick(RV.full.gerd.negAlarm)}\n\nO:\n${vits?vits+'. ':''} ${v('gerd-exam')}\n\nA:\n• ${vp('gerd-status')}.\n• ${vp('gerd-redflag')}.\n\nP:\n• ${vp('gerd-action')}.\n${bul(plan)}\n• Follow up in ${vp('gerd-fu')}.`;
 };
 
 G.uti=function(){
@@ -530,7 +530,7 @@ gerd() {
   const rf=picks([['gerd-weightloss','weight loss'],['gerd-vomiting','persistent vomiting'],['gerd-bleeding','GI bleeding'],['gerd-anaemia','anaemia'],['gerd-mass','abdominal mass']]);
   const plan=picks([['gerd-refill','Refill '+med],['gerd-lifestyle','Lifestyle: elevate head of bed, avoid triggers'],['gerd-antacid','Antacid PRN'],['gerd-scope','GI endoscopy referral'],['gerd-gastro','Gastroenterology referral'],['gerd-alarmwarn','Return if alarm sx']]);
   const oVits=vits([[v('gerd-bp'),'BP'],[v('gerd-wt'),'wt']]);
-  return `${pick(RV.compact.gerd.open)} ${med}, ${vp('gerd-adherence')}.${sx.length?' Sx: '+sx.join(', ')+'.':''}${rf.length?' Alarm sx: '+rf.join(', ')+' — investigation warranted.':''}\n\nO: ${oVits||'Vitals stable'}. ${v('gerd-exam')}\n\nA: GERD — ${vp('gerd-status')}.\n\nP:\n• ${vp('gerd-action')}.\n${bul(plan)}\n• F/u ${vp('gerd-fu')}.`;
+  return `${pick(RV.compact.gerd.open)} ${med}, ${vp('gerd-adherence')}.${sx.length?' Sx: '+sx.join(', ')+'.':''}${rf.length?' Alarm sx: '+rf.join(', ')+' — investigation warranted.':''}\n\nO: ${oVits||'Vitals stable'}. ${v('gerd-exam')}\n\nA: ${vp('gerd-status')}.\n\nP:\n• ${vp('gerd-action')}.\n${bul(plan)}\n• F/u ${vp('gerd-fu')}.`;
 },
 
 inr() {
@@ -932,7 +932,16 @@ function toggleType(type){
   saveState();
   if (i === -1){
     const panel = document.getElementById('panel-' + type);
-    if (panel) setTimeout(() => scrollMainTo(panel), 40);
+    if (panel){
+      /* fold every other reason away so the new one is the only form open */
+      selected.forEach(t => {
+        if (t === type) return;
+        const other = document.getElementById('panel-' + t);
+        if (other) collapsePanel(other, true);
+      });
+      collapsePanel(panel, false);
+      setTimeout(() => scrollMainTo(panel), 40);
+    }
   }
 }
 
@@ -973,6 +982,12 @@ function syncVisit(){
   if (!any) hideVisitOut();
 }
 
+function collapsePanel(panel, shut){
+  panel.classList.toggle('collapsed', shut);
+  const title = panel.querySelector('.note-title');
+  if (title) title.setAttribute('aria-expanded', shut ? 'false' : 'true');
+}
+
 function renderChips(){
   const wrap = document.getElementById('visit-chips');
   wrap.textContent = '';
@@ -985,7 +1000,12 @@ function renderChips(){
     go.className = 'chip-go';
     go.textContent = label;
     go.title = 'Jump to this form';
-    go.onclick = () => { const p = document.getElementById('panel-' + t); if (p) scrollMainTo(p); };
+    go.onclick = () => {
+      const p = document.getElementById('panel-' + t);
+      if (!p) return;
+      collapsePanel(p, false);
+      scrollMainTo(p);
+    };
     chip.appendChild(go);
     const x = document.createElement('button');
     x.type = 'button';
@@ -1098,6 +1118,8 @@ function clearVisit(){
     p.querySelectorAll('select').forEach(el => el.selectedIndex = 0);
     p.querySelectorAll('input[type="checkbox"]').forEach(el => el.checked = el.defaultChecked);
   });
+  document.querySelectorAll('.form-panel').forEach(p => collapsePanel(p, false));
+  refreshSummaries();
   selected = [];
   hideVisitOut();
   syncVisit();
@@ -1185,23 +1207,246 @@ function markInstalled(){
 }
 window.addEventListener('appinstalled', markInstalled);
 
+
+/* ══════════════════════════════════════════════════════════════════════
+   QUIET FORMS
+   Most controls on a form are assumptions, not information: "good
+   adherence", "no acute concerns", "tolerating well", "follow up in 3
+   months". The doctor almost never changes them, but he still has to read
+   past every one of them on every note.
+
+   Those controls fold into a single line per section that states, in
+   words, exactly what the note will document. Nothing is hidden — the
+   line is the same content, read instead of scanned — and "Adjust" opens
+   the controls whenever he wants them. Anything carrying per-patient
+   information (every text box, and any dropdown whose default is not a
+   normal/routine finding) is never folded.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* A dropdown default that reads as a normal, negative or routine finding */
+const ASSUMED_DEFAULT = /^(none|no |not |normal|nil|good|stable|well|denies|negative|unremarkable|within normal|all within|tolerating|adequate|absent|regular|up to date|euthyroid|healthy|routine|continue|safe|soft|clinically|—|–|n\/a)/i;
+/* Intervals the doctor sets once and rarely revisits */
+const INTERVAL_FIELD = /-(fu|recheck|nextlabs)$/;
+/* Suicidal ideation and acute safety never fold. Their defaults assert
+   something — "Denies suicidal ideation", "No acute safety concern" — that
+   carries real weight in a chart, and it should be set deliberately each
+   time rather than read past in a summary line. Two controls on four forms
+   is a cheap price for that. */
+const NEVER_FOLD = /-(si|safety)$/;
+
+function isAssumedSelect(sel){
+  if (NEVER_FOLD.test(sel.id)) return false;
+  if (INTERVAL_FIELD.test(sel.id)) return true;
+  const first = sel.options[0];
+  return !!first && ASSUMED_DEFAULT.test(first.textContent.trim());
+}
+
+function cleanLabel(text){
+  return (text || '')
+    .replace(/\s*[—–-]\s*(check all present|check all that apply|tick all that apply).*$/i, '')
+    .replace(/\s*\(optional\)\s*$/i, '')
+    .replace(/\s*:\s*$/, '')
+    .trim();
+}
+
+/* Gather the blocks of a section body in reading order, stepping into the
+   .mt10 wrappers but never into an .ifields row (those are text boxes). */
+function sectionUnits(body){
+  const units = [];
+  [...body.children].forEach(child => {
+    if (child.classList.contains('mt10') && !child.classList.contains('ifields')){
+      [...child.children].forEach(g => units.push({ node: g, host: child }));
+    } else {
+      units.push({ node: child, host: body });
+    }
+  });
+  return units;
+}
+
+function unitFoldable(node){
+  if (node.classList.contains('sub-label')) return null;          // decided by what follows
+  const selects = [...node.querySelectorAll('select')];
+  const boxes   = [...node.querySelectorAll('input[type="checkbox"]')];
+  const typed   = node.querySelectorAll('input[type="text"],input[type="number"],textarea').length;
+  if (!selects.length && !boxes.length) return false;             // text only — always visible
+  if (typed) return false;                                        // mixed — leave it alone
+  if (boxes.length) return true;                                  // a tick list reads fine as a line
+  return selects.every(isAssumedSelect);
+}
+
+function quietifyCard(card){
+  const body = card.querySelector('.section-body');
+  if (!body) return;
+  const units = sectionUnits(body);
+
+  const folded = [];
+  let pendingLabel = null;
+  units.forEach(u => {
+    if (u.node.classList.contains('sub-label')){ pendingLabel = u; return; }
+    const fold = unitFoldable(u.node);
+    if (fold === false){ pendingLabel = null; return; }
+    if (fold){
+      if (pendingLabel) folded.push(pendingLabel);
+      folded.push(u);
+    }
+    pendingLabel = null;
+  });
+  if (!folded.length) return;
+
+  const box = document.createElement('div');
+  box.className = 'adjustable';
+  folded.forEach(u => box.appendChild(u.node));
+
+  const summary = document.createElement('button');
+  summary.type = 'button';
+  summary.className = 'field-summary';
+  summary.setAttribute('aria-label', 'Adjust these');
+
+  body.appendChild(summary);
+  body.appendChild(box);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'adjust-btn';
+  card.querySelector('.section-head').appendChild(btn);
+
+  const setOpen = open => {
+    card.classList.toggle('open', open);
+    btn.textContent = open ? 'Done' : 'Adjust';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  setOpen(false);
+  btn.onclick = () => setOpen(!card.classList.contains('open'));
+  summary.onclick = () => setOpen(true);
+
+  card._renderSummary = () => {
+    summary.textContent = '';
+    let label = null;
+    folded.forEach(u => {
+      const n = u.node;
+      if (n.classList.contains('sub-label')){ label = cleanLabel(n.textContent); return; }
+      const rowLabel = cleanLabel((n.querySelector('.field-label') || {}).textContent);
+      [...n.querySelectorAll('select')].forEach(sel => {
+        const opt = sel.options[sel.selectedIndex];
+        if (!opt) return;
+        const value = opt.textContent.trim();
+        const row = sel.closest('.field-row');
+        const own = cleanLabel(row && (row.querySelector('.field-label') || {}).textContent);
+        addPart(summary, (needsLabel(own, value) ? own + ': ' : '') + value,
+                sel.selectedIndex !== 0);
+      });
+      /* the unit may BE a check grid, or hold several of them */
+      const grids = n.classList.contains('check-grid')
+        ? [n] : [...n.querySelectorAll('.check-grid')];
+      grids.forEach(grid => {
+        const boxes = [...grid.querySelectorAll('input[type="checkbox"]')];
+        if (!boxes.length) return;
+        const on = boxes.filter(b => b.checked)
+          .map(b => ((b.parentElement.querySelector('span') || {}).textContent || '').trim())
+          .filter(Boolean);
+        const changed = boxes.some(b => b.checked !== b.defaultChecked);
+        const name = label || rowLabel;
+        addPart(summary, (name ? name + ': ' : '') + (on.length ? on.join(', ') : 'none'), changed);
+        label = null;
+      });
+    });
+    if (!summary.textContent) summary.textContent = 'Nothing to add';
+  };
+  card._renderSummary();
+}
+
+/* "Tolerating well" says what it is; "None recent" does not. Carry the
+   field's label into the summary only when the value cannot stand alone. */
+function needsLabel(label, value){
+  if (!label) return false;
+  const v = value.toLowerCase();
+  return !label.toLowerCase().split(/[^a-z]+/)
+    .filter(w => w.length >= 4)
+    .some(w => v.indexOf(w.slice(0, 5)) > -1);
+}
+
+function addPart(host, text, changed){
+  if (host.childNodes.length){
+    const sep = document.createElement('span');
+    sep.className = 'sep';
+    sep.textContent = ' · ';
+    host.appendChild(sep);
+  }
+  const el = document.createElement('span');
+  if (changed) el.className = 'chg';
+  el.textContent = text;
+  host.appendChild(el);
+}
+
+function refreshSummaries(root){
+  (root || document).querySelectorAll('.section-card').forEach(c => {
+    if (typeof c._renderSummary === 'function') c._renderSummary();
+  });
+}
+
+/* Escape hatch: show every control, for anyone who would rather scan
+   widgets than read a line. Remembered between sessions. */
+let showAllFields = false;
+function toggleFields(){
+  showAllFields = !showAllFields;
+  applyFieldMode();
+  try { localStorage.setItem('soap-show-all', showAllFields ? '1' : '0'); } catch(e){}
+}
+function applyFieldMode(){
+  document.body.classList.toggle('show-all-fields', showAllFields);
+  const btn = document.getElementById('fields-toggle');
+  if (btn){
+    btn.textContent = showAllFields ? 'Tidy Fields' : 'All Fields';
+    btn.classList.toggle('active-compact', showAllFields);
+  }
+}
+
 /* ── Boot ────────────────────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', () => {
-  /* every form gets a "Remove" control in its heading */
+  /* Each form becomes: a clickable header, and a card area that can fold
+     away. Folding is what keeps a four-reason visit from being four screens
+     of scrolling. */
   document.querySelectorAll('.form-panel').forEach(p => {
     const type = p.id.replace('panel-', '');
     const title = p.querySelector('.note-title');
     if (!title) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'panel-cards';
+    [...p.querySelectorAll(':scope > .section-card')].forEach(c => wrap.appendChild(c));
+    p.appendChild(wrap);
+
+    const chevron = document.createElement('span');
+    chevron.className = 'note-chevron';
+    title.insertBefore(chevron, title.firstChild);
+
+    title.setAttribute('role', 'button');
+    title.setAttribute('tabindex', '0');
+    title.setAttribute('aria-expanded', 'true');
+    const toggle = () => {
+      p.classList.toggle('collapsed');
+      title.setAttribute('aria-expanded', p.classList.contains('collapsed') ? 'false' : 'true');
+    };
+    title.addEventListener('click', e => { if (!e.target.closest('.panel-remove')) toggle(); });
+    title.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); }
+    });
+
+    p.querySelectorAll('.section-card').forEach(quietifyCard);
+
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'panel-remove';
     btn.textContent = 'Remove';
     btn.setAttribute('aria-label', 'Remove this reason from the visit');
-    btn.onclick = () => removeType(type);
+    btn.onclick = e => { e.stopPropagation(); removeType(type); };
     title.appendChild(btn);
   });
 
   restoreState();
+  try { showAllFields = localStorage.getItem('soap-show-all') === '1'; } catch(e){}
+  applyFieldMode();
+  refreshSummaries();
   syncVisit();
 
   /* typing anywhere: share the vitals, and save */
@@ -1221,7 +1466,11 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     saveState();
   });
-  document.addEventListener('change', saveState);
+  document.addEventListener('change', e => {
+    const card = e.target.closest && e.target.closest('.section-card');
+    if (card && typeof card._renderSummary === 'function') card._renderSummary();
+    saveState();
+  });
 
   /* Ctrl/Cmd + Enter writes the note from anywhere on the page */
   document.addEventListener('keydown', e => {
@@ -1245,7 +1494,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) markInstalled();
 
   if ('serviceWorker' in navigator){
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
   }
 });
 
